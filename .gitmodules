@@ -1,0 +1,3 @@
+[submodule "fqmc"]
+	path = fqmc
+	url = git@github.com:baucd/fqmc.git
