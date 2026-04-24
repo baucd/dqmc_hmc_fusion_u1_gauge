@@ -106,27 +106,183 @@ program fthmc_main
     ! warmup
     if( lwarmup ) then
 #IFDEF _OPENMP
-        time0 = omp_get_wtime()
+    time0 = omp_get_wtime()
 #ELSE
-        call cpu_time(time0)
+    call cpu_time(time0)
 #ENDIF
+        ! prepare warmup log output
+        if ( irank .eq. 0) then
+            open( unit=fout5, file='warmup_equi.log', status='unknown' )
+            write(fout5,'(a)') ' road to equilibrium ...'
+            write(fout,'(a,i8)') ' nwarmup = ', nwarmup
+        endif
 
-        ! perform warmup sweeps
-        do i = 1, nwarmup
-            call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., lfourier=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi)
+        ! part 1: try to reach convergence
+        mdstep = 20
+        nstat = 21 ! 20 is too special
+        nsw = 0
+        nsw2 = 0
+        ratio = 0.d0
+        main_obs(1) = czero
+        lequi = .false.
+        lexit = .false.
+        do while ( .true. )
+            nsw2 = nsw2 + 1
+
+            ! test runs
+            do i = 1, nstat
+                nsw = nsw + 1
+                call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., lfourier=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi)
+                if ( i .eq. 1)     ener_pot_old_local = ener_pot_old
+                if ( i .eq. nstat) ener_pot_new_local = ener_pot_new
+            enddo
+
+            ! calculate weight ratio
+            if ( ener_pot_new_local .eq. 0) then
+                weight_ratio = 1.d0
+            else
+                weight_ratio = abs((ener_pot_new_local - ener_pot_old_local)/ener_pot_new_local)
+            endif
+            ! calculate acceptance ratio
+            ratio = dble(main_obs(1))/aimag(main_obs(1))
+            ! reset ratio
+            main_obs(1) = czero
+
+            ! check the covergence and dt at master process
+            if ( irank .eq. 0) then
+                ! output log
+                write(fout5, '(i6, 3e16.8)') nsw2, dt, ratio, weight_ratio
+                if ( weight_ratio .lt. converge_ratio .and. ratio .gt. 0.d0) then
+                    lequi = .true.
+                    lexit = .true.
+
+                    ! set mdstep for equilibration runs, when accept ratio is not to small, md is stable such that we could increase mdstep if needed
+                    !mdstep = nint(mdtime/dt)
+                    ! reset ratio
+                    main_obs(1) = czero
+                    write(fout5, '(a, i5)') ' during warmup, model is equilibrated (might be meta-stable). number of sweeps used: ', nsw
+                endif
+                ! will not continue to production runs
+                if ( nsw .gt. nwarmup) then
+                    lequi = .false.
+                    lexit = .true.
+                    write(fout5, '(a)') ' during warmup, model is not equilibrated. will not continue to meas. number of sweeps used: ', nsw
+                endif
+            endif
+
+            ! tune step size
+            if ( ratio .lt. 0.7d0 ) then
+                dt = dt*0.8d0
+            elseif (ratio .gt. 0.8d0) then
+                dt = dt*1.2d0
+            endif
+
+            ! whether to exit
+            call mp_bcast( lexit,   0 )
+            call mp_bcast( lequi,   0 )
+            call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+            if ( lexit ) exit
         enddo
 
-#IFDEF _OPENMP
-        time1 = omp_get_wtime()
-#ELSE
-        call cpu_time(time1)
-#ENDIF
-        if ( irank .eq. 0 ) then
-            write(fout,'(a,f14.6,a)') ' >>> Time spent for warmup:', (time1-time0)/dble(60), 'm'
+        ! part 2: equilibration runs
+        if ( lequi ) then
+            lexit = .false.
+            ! just 5 equilibration runs
+            write(fout5,'(a)') ' runs at equilibrium ...'
+            nequi = 200
+            ! do 200 sweeps, if ratio is between 0.7 to 0.8 in the middle, then exit in advance.
+            do j = 1, nequi
+                ! test runs
+                do i = 1, nstat
+                    call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., lfourier=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi)
+                    if ( i .eq. 1)     ener_pot_old_local = ener_pot_old
+                    if ( i .eq. nstat) ener_pot_old_local = ener_pot_new
+                enddo
+
+                ! calculate weight ratio
+                weight_ratio = abs((ener_pot_new_local - ener_pot_old_local)/ener_pot_new_local)
+                ! calculate acceptance ratio
+                ratio = dble(main_obs(1))/aimag(main_obs(1))
+                ! reset ratio
+                main_obs(1) = czero
+
+                if ( irank .eq. 0) then
+                    write(fout5, '(i6, 3e16.8)') j, dt, ratio, weight_ratio
+                    ! check acceptance ratio
+                    if ( ratio .gt. 0.7d0 .and. ratio .lt. 0.8d0) then
+                        lexit = .true.
+                        write(fout5, '(a)') ' ending equilibration runs in advance.'
+                    endif
+
+                    if ( j .eq. nequi) then
+                        lexit = .true.
+                        write(fout5, '(a)') ' ending equilibration runs on time.'
+                    endif
+                endif
+
+                ! whether to exit
+                call mp_bcast( lexit,   0 )
+                call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+                if ( lexit ) exit
+
+                ! tune step size
+                if ( ratio .lt. 0.7d0 ) then
+                    dt = dt*0.8d0
+                elseif (ratio .gt. 0.8d0) then
+                    dt = dt*1.2d0
+                endif
+            enddo
+
+            ! broadcast new step size
+            call mp_bcast( dt,   0 )
+            call MPI_BARRIER(MPI_COMM_WORLD,ierr)
         endif
+
+#IFDEF _OPENMP
+    time1 = omp_get_wtime()
+#ELSE
+    call cpu_time(time1)
+#ENDIF
+        ! output log
+        if ( irank .eq. 0 ) then
+            ! output new md parameters to main output
+            write(fout,'(a,f8.3)') ' new dt: ', dt
+            write(fout,*) ' lequi: ', lequi
+            write(fout,'(a,f14.6)') ' >>> accept_ratio  = ', ratio
+            write(fout,'(a,f14.6,a)') ' >>> Time spent for warmup:', (time1-time0)/dble(60), 'm'
+            write(fout, *)
+            ! close warmup log output
+            close(fout5)
+        endif
+
+        ! if not equi, stop the program.
+        if ( .not. lequi ) then
+            ! output configurations if not equi
+            call phi_u1%ftdqmc_auxfield_outconfc()
+            stop
+        endif
+    else
+        ! no warmup, directly into production runs
+        !mdstep = nint(mdtime/dt)
+        !mdstep = 20
+        !mdstep = 5
+        if ( irank .eq. 0 ) then
+            ! output new md parameters to main output
+            write(fout,'(a)') ' use dt from confin instead of ftdqmc.in'
+            write(fout,'(a,f8.3)') ' new dt: ', dt
+            write(fout,*) ' lequi: ', lequi
+        endif
+
+        ! time profiling
+#IFDEF _OPENMP
+    time1 = omp_get_wtime()
+#ELSE
+    call cpu_time(time1)
+#ENDIF
     end if
 
-    ! production runs
+
+    ! HMC starts, production runs
     do nbc =  1, nbin
         ! initialize observables
         call fthmc_phy0_init(P0)
