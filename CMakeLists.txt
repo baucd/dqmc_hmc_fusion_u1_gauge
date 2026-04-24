@@ -1,0 +1,67 @@
+cmake_minimum_required(VERSION 3.10)
+#set(CMAKE_Fortran_COMPILER mpiifx)
+#set(CMAKE_VERBOSE_MAKEFILE ON)
+project(qmc)
+enable_language(Fortran)
+
+# AVX512 support
+option(ENABLE_AVX512 "CPU Support AVX512" OFF)
+option(ONLY_SSE "CPU Only Support SSE4.2" OFF)
+if(ENABLE_AVX512)
+    set(arch_opt_flags " -xCORE-AVX512 -qopt-zmm-usage=high ")
+else()
+    set(arch_opt_flags " -march=core-avx2 ")
+    if(ONLY_SSE)
+        set(arch_opt_flags " -march=core-sse4.2 ")
+    endif()
+endif()
+
+# set debug option and compiler options for linux machine
+option(ENABLE_DEBUG "Enable Debug" OFF)
+if(ENABLE_DEBUG)
+    set(CMAKE_BUILD_TYPE debug)
+    set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fpp -warn all -check bounds -check pointers -check format -traceback -g -diag-disable=5462")
+else()
+    set(CMAKE_BUILD_TYPE release)
+    set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${arch_opt_flags} -fpp -align all -diag-disable=5462")
+endif()
+
+# set debug option and compiler options for mac
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    if(ENABLE_DEBUG)
+        set(CMAKE_BUILD_TYPE debug)
+        #set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -ffpe-trap=overflow")
+        #set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -g -fcheck=all")
+        #set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -g -ffpe-trap=zero")
+        #set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -g")
+        #set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -g -ffpe-summary=none")
+        set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -g -ffpe-summary=none -fcheck=all -fbacktrace")
+    else()
+        set(CMAKE_BUILD_TYPE release)
+        set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -ffpe-summary=none")
+    endif()
+endif()
+
+# set OpenMP Option
+option(ENABLE_OPENMP "Enable OpenMP" OFF)
+if(ENABLE_OPENMP)
+    find_package(OpenMP)
+    #set(OpenMP_Fortran_FLAGS "-qopenmp")
+    if(ENABLE_DEBUG)
+        set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+        message(STATUS "openmp debug flags: " ${CMAKE_Fortran_FLAGS})
+    else()
+        set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+        message(STATUS "openmp release flags: " ${CMAKE_Fortran_FLAGS})
+    endif()
+endif()
+
+# output system type and build type
+message(STATUS "System: " ${CMAKE_SYSTEM_NAME})
+message(STATUS "Build Type: " ${CMAKE_BUILD_TYPE})
+message(STATUS "compile flags: " ${CMAKE_Fortran_FLAGS})
+
+# set project, executable and libs
+add_subdirectory(fqmc)
+add_subdirectory(simu)
+add_subdirectory(anal)
