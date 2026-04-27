@@ -39,31 +39,9 @@ contains
             ! save the gauge field configuration in case of rejection
             call fthmc_hybrid_save
 
-            ! firstly move the momentum field to t + dt/2, prepare the first force
-            call fthmc_hybrid_cal_force(phi)
-            ! fourier acceleration, fft of force matrix
-            if ( lfourier ) then
-                do nf = 1, nfam
-                    do i = 1, lfam
-                        z_tmp(:) = dcmplx(hybrid_force(i, nf, :), 0.d0)
-                        call onedimension_fft(ltrot, z_tmp)
-                        hybrid_force_k_z(i, nf, :) = z_tmp(:)
-                    enddo
-                enddo
-            endif
-
             ! molecular dynamics
-            do i = 1, mdstep
-                ! without splitting
-                !call fthmc_hybrid_md(phi, isfourier)
-                ! with splitting
-                call fthmc_hybrid_md_splitting(phi, isfourier)
-            enddo
-
-
-            ! new scheme: and move the first force into md and md_splitting
-            !call fthmc_hybrid_md(phi, isfourier, mdstep)
-            call fthmc_hybrid_md_splitting(phi, isfourier, mdstep)
+            !call fthmc_hybrid_md(phi, isfourier)
+            call fthmc_hybrid_md_splitting(phi, isfourier)
 
             ! calculate the energy after the MD
             call fthmc_hybrid_cal_ener(ener_new, phi)
