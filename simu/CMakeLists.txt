@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 enable_language(Fortran)
 
+# hmc
+add_compile_options(-DHMC)
+add_compile_options(-DCGOPT)
+
 if(ENABLE_PIFLUX)
     add_compile_options(-DPIFLUX)
 endif()
@@ -15,7 +19,7 @@ include_directories("${PROJECT_BINARY_DIR}/fqmc/fqmc_algo")
 add_library(simu STATIC ${DIR_SIMU})
 
 # set exe
-add_executable(exe ftdqmc_main.f90)
+add_executable(exe fthmc_main.f90)
 
 # set MKL or other blas/lapack libraries
 find_library(mkl_found libmkl_core.a $ENV{MKLROOT}/lib/intel64)

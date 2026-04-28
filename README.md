@@ -45,6 +45,25 @@ cmake -DCMAKE_Fortran_COMPILER=mpiifx \
     * Can provide more accurate uncertainty estimates.
     * May introduce additional computational overhead.
 
+### ENABLE_HMC
+* Description: Use HMC code.
+
+### ENABLE_CUDA_CG
+* Description: Use CUDA and nvidia GPU computation for HMC CG. Not CUDA, because DQMC code also use CUDA flag but not very usable.
+
+### ENABLE_CUDA_MEAS
+* Description: Use CUDA and nvidia GPU computation for HMC measurements.
+* Usage: Must with **ENABLE_CUDA_CG** before **ENABLE_CUDA_MEAS**.
+
+### ENABLE_CGOPT
+* Description: Use optimized CG instead of naive one.
+
+### ENABLE_PCG
+* Description: Use preconditioned CG.
+
+### ENABLE_DIRINV
+* Description: Use inversion of matrix to get Green's function.
+
 ## General Notes
 
 * All options follow standard CMake conventions: -D<OPTION>=<VALUE>.
