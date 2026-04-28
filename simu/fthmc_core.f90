@@ -1,8 +1,8 @@
 module fthmc_core
     use spring
     use ftdqmc_hamilt
+    use ftdqmc_auxfield_f5_class
     use fthmc_phi_class
-    use fthmc_hybrid
     use fthmc_latt
     use fthmc_gfun
     use fthmc_phy0
@@ -10,6 +10,1010 @@ module fthmc_core
     implicit none
 
 contains
+    subroutine fthmc_core_initfield(phi, phi_u1)
+        ! initialize the momentum field and the R field at the start of MD, draw from Gaussian distribution
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
+
+        ! local variables
+        integer :: i, nn, nt, ntau, i1, i2, j1, j2
+
+        ! for the momentum field
+        do nt =1, ltrot
+            do nn = 1, nfam
+                do i = 1, lfam
+                    pfield(i, nn, nt) = spring_sfmt_gaussian() / dsqrt(pm)
+                enddo
+            enddo
+        enddo
+
+        ! for the rfield
+        do i = 1, int(Nflavor/2.d0)
+            call phi(i)%fthmc_rfield_init()
+            ! also set the x_vec_old to zero
+            phi(i)%x_vec_old = czero
+            phi(i)%x_vec = chalf
+        enddo
+
+        ! calculate the phifield, M matrix (actually the B matrix) is always set
+        call cpu_time(tstart)
+        !call fthmc_matrix_calphi_sparse(phi)
+        call phi_u1%Md_mv_to_phi_sparse(phi)
+        call cpu_time(tend); time_vec(3) = time_vec(3) + (tend-tstart)
+
+        ! obtain the x_vec
+        call cpu_time(tstart)
+        call fthmc_core_cg(phi)
+        call cpu_time(tend); time_vec(1) = time_vec(1) + (tend-tstart)
+
+        ! for test: cg gpu
+        !call fthmc_core_cg_test(phi)
+    endsubroutine fthmc_core_initfield
+
+
+    subroutine fthmc_core_cg(phi)
+#IFNDEF CUDA
+        use fthmc_conjugate
+#ENDIF
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        ! conjugate gradient to calculate M^T * M for force as well as the Green's function
+        ! input: MM output: (M^T*M)^-1 phi = x_vec, x_vec is enough
+
+        ! local
+        integer  :: iter, i, j
+        real(dp) :: error
+        complex(dp) :: x_vec_tmp(ndim*ltrot)
+
+        do i = 1, int(Nflavor/2.d0)
+#IFDEF CGOPT
+            ! setting the x_0 according to this extrapolation formula from Richard's paper
+            x_vec_tmp = phi(i)%x_vec
+            phi(i)%x_vec = dcmplx(2.d0, 0.d0) * phi(i)%x_vec - phi(i)%x_vec_old
+            ! store the old solution to x_vec_old
+            phi(i)%x_vec_old = x_vec_tmp
+#ELSE
+            ! setting the x_0 to be cone
+            phi(i)%x_vec = cone
+#ENDIF
+
+            ! double precision cg
+#IFDEF CUDA
+            call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+#ELSE
+            call fthmc_conjugate_cg(itermax, errate, phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+#ENDIF
+            if ( irank .eq. 0) then
+                write(fout2, *) iter, error
+            endif
+
+        enddo
+    endsubroutine fthmc_core_cg
+
+
+    subroutine fthmc_core_cg_test(phi)
+#IFNDEF CUDA
+        use fthmc_conjugate
+#ENDIF
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        ! conjugate gradient to calculate M^T * M for force as well as the Green's function
+        ! input: MM output: (M^T*M)^-1 phi = x_vec, x_vec is enough
+
+        ! local
+        integer  :: iter, i, j
+        real(dp) :: error
+        complex(dp) :: x_vec_tmp(ndim*ltrot)
+
+        ! for test
+        INTEGER, PARAMETER :: ntest=10
+        COMPLEX(dp) :: x_vec_test(ndim*ltrot, ntest)
+        real(dp) :: rtmp
+
+        ! first use cgopt
+!        do i = 1, int(Nflavor/2.d0)
+!            ! setting the x_0 according to this extrapolation formula from Richard's paper
+!            x_vec_tmp = phi(i)%x_vec
+!            phi(i)%x_vec = dcmplx(2.d0, 0.d0) * phi(i)%x_vec - phi(i)%x_vec_old
+!            ! store the old solution to x_vec_old
+!            phi(i)%x_vec_old = x_vec_tmp
+!
+!            ! introduce some randomness, 10%
+!            !do j = 1, ndim*ltrot
+!            !    phi(i)%x_vec(j) = phi(i)%x_vec(j) + 0.3d0 * (spring_sfmt_stream() - 0.5d0) * 2.d0 * phi(i)%x_vec(j)
+!            !enddo
+!
+!            ! double precision cg
+!#IFDEF CUDA
+!            call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+!#ELSE
+!            call fthmc_conjugate_cg(itermax, errate, phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+!#ENDIF
+!            ! outptu x_vec
+!            do j = 1, ndim*ltrot
+!                write(111, '(2e16.8)') phi(i)%x_vec(j)
+!            enddo
+!
+!            if ( irank .eq. 0) then
+!                write(fout2, *) iter, error
+!            endif
+!        enddo
+
+        ! second use cone init
+        do i = 1, int(Nflavor/2.d0)
+            ! setting the x_0 to be cone
+            phi(i)%x_vec = cone
+
+            ! double precision cg
+#IFDEF CUDA
+            call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+#ELSE
+            call fthmc_conjugate_cg(itermax, errate, phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+#ENDIF
+
+            ! outptu x_vec
+            do j = 1, ndim*ltrot
+                write(111, '(2e16.8)') phi(i)%x_vec(j)
+            enddo
+            if ( irank .eq. 0) then
+                write(fout2, *) iter, error
+            endif
+        enddo
+
+        stop
+    endsubroutine fthmc_core_cg_test
+
+
+    subroutine fthmc_core_cg_gfun(phi)
+#IFNDEF CUDA
+        use fthmc_conjugate
+#ENDIF
+        class(fthmc_phi), intent(inout) :: phi
+        ! conjugate gradient to calculate M^T * M for force as well as the Green's function
+        ! input: MM output: (M^T*M)^-1 phi = x_vec, x_vec is enough
+
+        ! local
+        integer  :: iter, iter_sp, i, j
+        real(dp) :: error
+        complex :: x_vec_sp(ndim*ltrot)
+
+        phi%x_vec = cone
+        ! double precision cg
+#IFDEF CUDA
+        call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
+#ELSE
+        call fthmc_conjugate_cg(itermax, errate, phi%phifield, phi%x_vec, iter, error) ! sparse version
+#ENDIF
+
+        if ( irank .eq. 0) then
+            write(fout2, *) iter, error
+        endif
+    endsubroutine fthmc_core_cg_gfun
+
+
+    subroutine fthmc_core_cal_ener(energy, phi)
+        ! calculate energy of the effective Hamiltonian
+        real(dp), intent(out) :: energy
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+
+        ! local variables
+        integer :: nt, nf, i, i1, i2, nn, ntau, j1, j2
+        integer :: i_plaqA, b_plaqA, i_plaqB, b_plaqB, ib, inf, ilf, ijs
+        real(dp) :: dphi
+        real(dp) :: phi_Aplaq, phi_Bplaq, ejpi, ejs, ener_fer
+
+        ! external functions
+        integer, external :: npbc
+        real(dp), external :: ddot
+        complex(dp), external :: zdotc
+
+        energy = 0.d0
+        ejpi = 0.d0; ejs = 0.d0
+        do nt = 1, ltrot
+            do nf = 1, nfam
+                do i = 1, lfam
+                    i1 = l_bonds(1,i,nf)
+                    i2 = l_bonds(2,i,nf)
+
+                    ! Jpi term
+                    IF ( abs(jpi) .ne. 0.d0 ) THEN
+                        ! A plaq
+                        phi_Aplaq = 0.d0
+                        i_plaqA = inv_Aplaq_bondcord(1,i,nf)
+                        b_plaqA = inv_Aplaq_bondcord(2,i,nf)
+                        do ib = 1, 4
+                            inf = plaq_bondcord(1,ib,i_plaqA)
+                            ilf = plaq_bondcord(2,ib,i_plaqA)
+                            phi_Aplaq = phi_Aplaq + xfield(ilf,inf,nt)*sgnA_plaq(ib)
+                        end do
+
+                        ! B plaq
+                        phi_Bplaq = 0.d0
+                        i_plaqB = inv_Bplaq_bondcord(1,i,nf)
+                        b_plaqB = inv_Bplaq_bondcord(2,i,nf)
+                        do ib = 1, 4
+                            inf = plaq_bondcord(1,ib,i_plaqB)
+                            ilf = plaq_bondcord(2,ib,i_plaqB)
+                            phi_Bplaq = phi_Bplaq + xfield(ilf,inf,nt)*sgnB_plaq(ib)
+                        end do
+#IFDEF COMPACT
+                        ejpi = ejpi + cos(phi_Aplaq) + cos(phi_Bplaq)
+#ELSE
+                        ejpi = ejpi + ((phi_Aplaq-pi)**2 + (phi_Bplaq+pi)**2)/2.d0
+#ENDIF
+                    END IF
+
+                    ! Js term
+                    dphi = xfield(i,nf,npbc(nt+1,ltrot)) - xfield(i,nf,nt)
+#IFDEF COMPACT
+                    ejs = ejs + 2.d0*( 1.d0 - cos(dphi) )
+#ELSE
+                    ejs = ejs + dphi * dphi
+#ENDIF
+                end do
+            end do
+        end do
+        ejs = ejs / ( js*dtau*dtau ) * dtau
+        ejpi = ejpi * 0.25d0 * jpi * dtau  ! 0.25 is because of 4 times conuting
+        energy = ejs + ejpi
+
+        ! save energy
+        ener_js = ejs
+        ener_jpi = ejpi
+
+        ! set potential part of energy, exclude the momentum part
+        ener_pot = energy
+
+        ! energy from the determinants
+        ener_fer = 0.d0
+        do i = 1, int(Nflavor/2.d0)
+            ener_fer = ener_fer + dble(zdotc(ndim*ltrot, phi(i)%phifield, 1, phi(i)%x_vec,1))
+        enddo
+        ener_ek = ener_fer
+
+        ! add the momentum field  p^2 and the contribution from fermion determinant
+        energy = energy + ener_fer
+
+        ! set ener_q and ener_p
+        ener_q = energy
+        ener_p = 0.5d0*pm*ddot(2*ndim*ltrot, reshape(pfield, (/lfam*nfam*ltrot/)), 1, reshape(pfield,(/lfam*nfam*ltrot/)),1)
+
+        energy = energy + ener_p
+    endsubroutine fthmc_core_cal_ener
+
+
+    subroutine fthmc_core_cal_gfun_meas(gfun0, lmeasure_equaltime, lmeasure_dyn, P0, T0)
+        ! Input: rfield, M matrix to compute the new phifield, MM and the new phifield to compute the new x_vec
+        ! so rfield, M matrix and MM matrix are needed
+
+        ! calculate the inverse of M matrix which is the Green's function
+        use fthmc_phy0
+        use fthmc_tdm
+
+        type(gfun), intent(inout) :: gfun0
+        logical, intent(in) :: lmeasure_equaltime, lmeasure_dyn
+        type(phy0), intent(inout) :: P0
+        type(tdm), intent(inout) :: T0
+
+#IFDEF DIRINV
+        ! DIRECT INVERSION
+        !!! benchmark with direct inversion of matrix
+        integer :: nt, i, j, i1, i2, i3, i4, j1, j2, j3, j4, nt1, nt2
+        integer, external :: npbc
+        complex(dp), dimension(:,:), allocatable :: Mmat
+#IFDEF DETSGN
+        ! test the determinant sign
+        complex(dp) :: det_z
+#ENDIF
+#ELSE
+        ! local
+        type(fthmc_phi) :: phi
+        integer  :: nt, i, j, i1, i2, i3, i4, j1, j2, j3, j4, nt1, nt2, ncount
+        integer, external :: npbc
+#ENDIF
+
+
+        !!! allocate memory for array
+#IFDEF DIRINV
+        ! Mmat
+        allocate(Mmat(ndim*ltrot, ndim*ltrot))
+#ELSE
+        ! allocate space for object phi
+        call phi%fthmc_phi_alloc
+#ENDIF
+
+        !!! EXECUTABLE
+#IFDEF DIRINV
+        ! DIRECT INVERSION
+        ! set up M matrix
+        Mmat = czero
+        ! the diagonal blocks
+        do i =1, ndim*ltrot
+            Mmat(i,i) = cone
+        enddo
+        ! set up nt from 1 to ltrot - 1
+        do nt = 1, ltrot-1
+            i1 = (nt-0)*ndim+1; i2 = i1 + ndim - 1
+            j1 = (nt-1)*ndim+1; j2 = j1 + ndim - 1
+            Mmat(i1:i2, j1:j2) = -Bmat_up(:,:,nt)
+        enddo
+        ! just ltrot
+        i1 = 1; i2 = ndim
+        j1 = (ltrot-1)*ndim + 1; j2 = j1+ndim-1
+        Mmat(i1:i2,j1:j2) = Bmat_up(:,:,ltrot)
+
+        M_inv = Mmat
+        ! s_inv_z will destory M_inv and replace it with the result
+        call s_inv_z(ndim*ltrot, M_inv)
+        ! END DIRECT INVERSION
+
+#IFDEF DETSGN
+        ! test: the determinant sign
+        call s_logdet_z(ndim*ltrot, Mmat, det_z)
+        write(*, '(2e16.8)') dble(det_z), dcos(aimag(det_z))
+#ENDIF
+
+        ! set up the equaltime Green's function
+        do nt = 1, ltrot
+            do i = 1, ndim
+                do j = 1, ndim
+                    i1 = i + (nt-1) * ndim
+                    j1 = j + (nt-1) * ndim
+                    gfun0%grup(i,j,nt) = M_inv(i1, j1)
+                enddo
+            enddo
+        enddo
+        ! equaltime measurements
+        if (lmeasure_equaltime) call fthmc_phy0_meas(gfun0, P0)
+
+
+        if ( lmeasure_dyn ) then
+            ! set up the equaltime and dynamical Green's function
+            do nt = 1, ltrot ! ltrot is the beta point
+                do nt1 = 1, ltrot
+                    nt2 = npbc(nt1+nt, ltrot)
+                    do i = 1, ndim
+                        do j = 1, ndim
+                            i1 = i + (nt1-1) * ndim
+                            j1 = j + (nt1-1) * ndim
+
+                            i2 = i + (nt1-1) * ndim
+                            j2 = j + (nt2-1) * ndim
+
+                            i3 = i + (nt2-1) * ndim
+                            j3 = j + (nt1-1) * ndim
+
+                            i4 = i + (nt2-1) * ndim
+                            j4 = j + (nt2-1) * ndim
+                            gfun0%g00up(i,j,nt) = M_inv(i1, j1)
+                            gfun0%g0tup(i,j,nt) = M_inv(i2, j2)
+                            gfun0%gt0up(i,j,nt) = M_inv(i3, j3)
+                            gfun0%gttup(i,j,nt) = M_inv(i4, j4)
+                        enddo
+                    enddo
+                    ! dealing with nt = ltrot, equaltime green's function
+                    if (nt .eq. ltrot) gfun0%g0tup(:,:,ltrot) = gfun0%g0tup(:,:,ltrot) - Imat(:,:)
+
+                    ! dynamical measurements
+                    call fthmc_tdm_meas(nt, gfun0, T0)
+                enddo
+            enddo
+
+        endif
+
+#ELSE
+
+        ! STOCHASTIC ESTIMATOR
+        gfun0%grup(:,:,:) = czero
+        gfun0%g00up(:,:,:)= czero
+        gfun0%g0tup(:,:,:)= czero
+        gfun0%gt0up(:,:,:)= czero
+        gfun0%gttup(:,:,:)= czero
+        do ncount = 1, nsamples
+
+            ! assign a new rfield
+            call phi%fthmc_rfield_init()
+
+            ! calculate the phifield
+            call cpu_time(tstart)
+            call fthmc_matrix_calphi_gfun_sparse(phi)
+            call cpu_time(tend); time_vec(3) = time_vec(3) + (tend-tstart)
+
+            ! do another conjugate residual method to compute the new x_vec with the new phifield
+            call cpu_time(tstart)
+            call fthmc_core_cg_gfun(phi)
+            call cpu_time(tend); time_vec(5) = time_vec(5) + (tend-tstart)
+
+            ! only equaltime measurements
+            ! prepare Green's function
+            do nt = 1, ltrot
+                do i = 1, ndim
+                    do j = 1, ndim
+                        i1 = i + (nt-1) * ndim
+                        j1 = j + (nt-1) * ndim
+                        gfun0%grup(i,j,nt) = gfun0%grup(i,j,nt) + phi%x_vec(i1) * dconjg(phi%rfield(j1)) / dble(nsamples)
+                    enddo
+                enddo
+            enddo
+
+            ! dynamical measurements
+            if ( lmeasure_dyn ) then
+                do nt = 1, ltrot ! ltrot is the beta point
+
+                    do nt1 = 1, ltrot
+                       nt2 = npbc(nt1+nt, ltrot)
+                        do i = 1, ndim
+                            do j = 1, ndim
+                                i1 = i + (nt1-1) * ndim
+                                j1 = j + (nt1-1) * ndim
+
+                                i2 = i + (nt1-1) * ndim
+                                j2 = j + (nt2-1) * ndim
+
+                                i3 = i + (nt2-1) * ndim
+                                j3 = j + (nt1-1) * ndim
+
+                                i4 = i + (nt2-1) * ndim
+                                j4 = j + (nt2-1) * ndim
+                                gfun0%g00up(i,j,nt) = gfun0%g00up(i,j,nt) + phi%x_vec(i1) * dconjg(phi%rfield(j1)) / dble(nsamples)
+                                gfun0%g0tup(i,j,nt) = gfun0%g0tup(i,j,nt) + phi%x_vec(i2) * dconjg(phi%rfield(j2)) / dble(nsamples)
+                                gfun0%gt0up(i,j,nt) = gfun0%gt0up(i,j,nt) + phi%x_vec(i3) * dconjg(phi%rfield(j3)) / dble(nsamples)
+                                gfun0%gttup(i,j,nt) = gfun0%gttup(i,j,nt) + phi%x_vec(i4) * dconjg(phi%rfield(j4)) / dble(nsamples)
+                            enddo
+                        enddo
+                    enddo
+
+                enddo
+            endif
+
+        enddo
+
+        ! perform the measurements
+        call cpu_time(tstart)
+
+        ! equaltime
+        if (lmeasure_equaltime) call fthmc_phy0_meas(gfun0, P0)
+        ! dynamical
+        if ( lmeasure_dyn ) then
+            ! dealing with nt = ltrot, equaltime green's function
+            gfun0%g0tup(:,:,ltrot) = gfun0%g0tup(:,:,ltrot) - Imat(:,:)
+            call fthmc_tdm_meas(nt, gfun0, T0)
+        endif
+
+        call cpu_time(tend); time_vec(6) = time_vec(6) + (tend-tstart)
+
+        ! END STOCHASTIC ESTIMATOR
+#ENDIF
+
+        ! free up space
+#IFDEF DIRINV
+        deallocate(Mmat)
+#ELSE
+        call phi%fthmc_phi_free
+#ENDIF
+    endsubroutine fthmc_core_cal_gfun_meas
+
+
+    subroutine fthmc_core_cal_gfun_meas_singlesource(gfun0, lmeasure_equaltime, lmeasure_dyn, P0, T0)
+        ! calculate the inverse of M matrix which is the Green's function
+        !!! with only on source
+        use fthmc_phy0
+        use fthmc_tdm
+
+        type(gfun), intent(inout) :: gfun0
+        logical, intent(in) :: lmeasure_equaltime, lmeasure_dyn
+        type(phy0), intent(inout) :: P0
+        type(tdm), intent(inout) :: T0
+
+        ! local variables
+        type(fthmc_phi) :: phi
+        integer  :: nt, i, j, i1, nt1, nt2, imj
+        integer, external :: npbc
+        complex(dp) :: tmp_vec(ndim)
+
+        ! initialize tmp_vec
+        tmp_vec(:)=czero
+        tmp_vec(1)=cone
+
+        ! get the first column of B^{\dagger}_{ltrot}
+        call Bmat_mv(tmp_vec, ltrot)
+
+        ! initialize the phi vector
+        call phi%fthmc_phi_alloc
+        phi%phifield(:) = czero
+        phi%phifield(1) = cone
+        phi%phifield( ((ltrot-1)*ndim+1) : (ltrot*ndim) ) = tmp_vec(:)
+
+        ! do another conjugate residual method to compute the new x_vec with the new phifield
+        call fthmc_core_cg_gfun(phi)
+
+        ! only equaltime measurements
+        do nt = 1, ltrot
+            ! set the one source correlation function
+            do i = 1, ndim
+                j=1 ! vector, many rows and one column
+                imj = latt_imj(j,i)
+                gfun0%grup_onesource(imj, nt) = phi%x_vec(i)
+            enddo
+
+            ! set up the whole equaltime Green's function making use of translational invariance
+            do i = 1, ndim
+                do j = 1, ndim
+                    imj = latt_imj(j,i)
+                    gfun0%grup(i,j,nt) = gfun0%grup_onesource(imj,nt)
+                enddo
+            enddo
+        enddo
+        ! equaltime measurements
+        if (lmeasure_equaltime) call fthmc_phy0_meas(gfun0, P0)
+
+
+        ! dynamical measurements
+        if ( lmeasure_dyn ) then
+            do nt = 1, ltrot ! ltrot is the beta point
+
+                ! get the dynamical Green's function
+                nt1 = 1
+                nt2 = npbc(nt1+nt, ltrot)
+                do i = 1, ndim
+                    j = 1 ! nt=1, site index=1
+                    imj = latt_imj(j,i)
+                    i1 = i + (nt2-1) * ndim
+
+                    gfun0%g00up_onesource(imj,nt) = phi%x_vec(i)
+                    gfun0%g0tup_onesource(imj,nt) = phi%x_vec(i1)
+                    gfun0%gt0up_onesource(imj,nt) = phi%x_vec(i1)
+                    gfun0%gttup_onesource(imj,nt) = phi%x_vec(i)
+                enddo
+
+                ! from one source to construct the whole dyn Green's function
+                do i = 1,ndim
+                    do j = 1, ndim
+                        imj = latt_imj(j,i)
+                        gfun0%g00up(i,j,nt) = gfun0%g00up_onesource(imj,nt)
+                        gfun0%g0tup(i,j,nt) = gfun0%g0tup_onesource(imj,nt)
+                        gfun0%gt0up(i,j,nt) = gfun0%gt0up_onesource(imj,nt)
+                        gfun0%gttup(i,j,nt) = gfun0%gttup_onesource(imj,nt)
+                    enddo
+                enddo
+                    ! dealing with nt = ltrot, equaltime green's function
+                if (nt .eq. ltrot) gfun0%g0tup(:,:,ltrot) = gfun0%g0tup(:,:,ltrot) - Imat(:,:)
+
+                ! dynamical measurements
+                call fthmc_tdm_meas(nt, gfun0, T0)
+            enddo
+        endif
+
+        ! free up space
+        call phi%fthmc_phi_free
+    endsubroutine fthmc_core_cal_gfun_meas_singlesource
+
+
+    subroutine fthmc_core_cal_force(phi)
+#IFDEF _OPENMP
+        use OMP_LIB
+#ENDIF
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        ! calculate the force to update the momentum field, ps: no dt multiply here
+        ! input: xfield, rfield, phifield, M matrix  output: force matrix
+        ! derivative comes from pure gauge action and the pseudo-fermion action
+
+        integer, external :: npbc
+        complex(dp), external :: zdotu, zdotc
+
+        ! local
+        integer :: i, ib, j, nt, nf, i_plaq, b_plaq, i4, i5, inf, ilf, icount
+        integer :: s1, e1, s2, e2
+        real(dp) :: force_bos, force_fer, force_newcode, phi_Aplaq_old, phi_Bplaq_old
+        complex(dp) :: vec_tau1(ndim), vec_tau2(ndim)
+
+        ! important
+        integer :: nt_in, nf_in, lf_in
+
+        ! in order to reach O(N) scaling, initialize Btau_vtau vectors
+        call cpu_time(tstart)
+        call fthmc_matrix_preBvec(phi) ! now all e^vi's * phi%(i)vtau are set, total 16 position
+        call cpu_time(tend); time_vec(2) = time_vec(2) + (tend-tstart)
+
+        call cpu_time(tstart)
+        hybrid_force = 0.d0
+        hybrid_force1 = 0.d0
+        hybrid_force2 = 0.d0
+        ! the order: nfam =4, lfam, and for each time slices with the support of openmp acceleration
+        do nf = nfam, 1, -1
+            do i = 1, lfam
+                do nt = 1, ltrot
+                    nf_in = nf
+                    lf_in = i
+                    nt_in = nt
+
+                    ! force from the pseudofermion part, new code scale with O(N) in total, 1*2 * 2*1 inner product
+                    force_fer = 0.d0
+                    call fthmc_matrix_force_Btau_vtau(lf_in, nf_in, nt_in, force_fer) ! return the force
+
+                    ! force from the gauge action part
+#IFDEF COMPACT
+                    force_bos = ( dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot))) + &
+                                  dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot))) ) / (0.5d0*js*dtau)
+#ELSE
+                    force_bos = ( xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot)) +&
+                                  xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot)) ) / (0.5d0*js*dtau)
+#ENDIF
+
+                    ! boson_ratio for pi-flux pinning field
+                    if ( abs(jpi) .ne. 0.d0 ) then
+                        ! A plaq
+                        phi_Aplaq_old = 0.d0
+                        i_plaq = inv_Aplaq_bondcord(1,i,nf)
+                        b_plaq = inv_Aplaq_bondcord(2,i,nf)
+                        do ib = 1, 4
+                            if( ib .eq. b_plaq ) then
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(i,nf,nt)*sgnA_plaq(ib)
+                            else
+                                inf = plaq_bondcord(1,ib,i_plaq)
+                                ilf = plaq_bondcord(2,ib,i_plaq)
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(ilf,inf,nt)*sgnA_plaq(ib)
+                            end if
+                        end do
+                        ! Jpi part force, A plaq
+#IFDEF COMPACT
+                        force_bos = force_bos - dtau*jpi*sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
+#ELSE
+                        force_bos = force_bos + dtau*jpi*sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
+#ENDIF
+
+                        ! B plaq
+                        phi_Bplaq_old = 0.d0
+                        i_plaq = inv_Bplaq_bondcord(1,i,nf)
+                        b_plaq = inv_Bplaq_bondcord(2,i,nf)
+
+                        do ib = 1, 4
+                            if( ib .eq. b_plaq ) then
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(i,nf,nt)*sgnB_plaq(ib)
+                            else
+                                inf = plaq_bondcord(1,ib,i_plaq)
+                                ilf = plaq_bondcord(2,ib,i_plaq)
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*sgnB_plaq(ib)
+                            end if
+                        end do
+#IFDEF COMPACT
+                        force_bos = force_bos - dtau*jpi*sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
+#ELSE
+                        force_bos = force_bos + dtau*jpi*sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
+#ENDIF
+                    endif
+
+                    ! combine the force from gauge boson and fermion part together
+                    hybrid_force(i, nf, nt) = force_fer + force_bos
+                    hybrid_force1(i, nf, nt) = force_fer
+                    hybrid_force2(i, nf, nt) = force_bos
+
+                    ! for test: output force
+                    !write(111, '(2e16.8)') force_fer, force_bos
+
+                enddo
+            enddo
+        enddo
+        call cpu_time(tend); time_vec(7) = time_vec(7) + (tend-tstart)
+
+        ! output the force log
+        !if ( irank .eq. 0) then
+        !    write(fout4, '(3f10.6)') sum(abs(hybrid_force))/(dble(nfam*lfam*ltrot)), minval(abs(reshape(hybrid_force,(/lfam*nfam*ltrot/)))), maxval(abs(reshape(hybrid_force,(/lfam*nfam*ltrot/))))
+        !endif
+    endsubroutine fthmc_core_cal_force
+
+
+    subroutine fthmc_core_cal_force_fer(phi)
+#IFDEF _OPENMP
+        use OMP_LIB
+#ENDIF
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        ! calculate the force to update the momentum field, ps: no dt multiply here
+        ! input: xfield, rfield, phifield, M matrix  output: force matrix
+        ! derivative comes from pure gauge action and the pseudo-fermion action
+
+        integer, external :: npbc
+        complex(dp), external :: zdotu, zdotc
+
+        ! local
+        integer :: i, ib, j, nt, nf, i_plaq, b_plaq, i4, i5, inf, ilf, icount
+        integer :: s1, e1, s2, e2
+        real(dp) :: force_bos, force_fer, force_newcode, phi_Aplaq_old, phi_Bplaq_old
+        complex(dp) :: vec_tau1(ndim), vec_tau2(ndim)
+
+        ! important
+        integer :: nt_in, nf_in, lf_in
+
+        ! in order to reach O(N) scaling, initialize Btau_vtau vectors
+        call cpu_time(tstart)
+        call fthmc_matrix_preBvec(phi) ! now all e^vi's * phi%(i)vtau are set, total 16 position
+        call cpu_time(tend); time_vec(2) = time_vec(2) + (tend-tstart)
+
+        call cpu_time(tstart)
+        ! the order: nfam =4, lfam, and for each time slices with the support of openmp acceleration
+        hybrid_force1 = 0.d0
+        do nf = nfam, 1, -1
+            do i = 1, lfam
+                do nt = 1, ltrot
+                    nf_in = nf
+                    lf_in = i
+                    nt_in = nt
+
+                    ! new code scale with O(N) in total, 1*2 * 2*1 inner product
+                    force_fer = 0.d0
+                    call fthmc_matrix_force_Btau_vtau(lf_in, nf_in, nt_in, force_fer) ! return the force
+
+                    ! force from the fermion part
+                    hybrid_force1(i, nf, nt) = force_fer
+                enddo
+            enddo
+        enddo
+        call cpu_time(tend); time_vec(7) = time_vec(7) + (tend-tstart)
+    endsubroutine fthmc_core_cal_force_fer
+
+
+    subroutine fthmc_core_cal_force_bos(phi)
+#IFDEF _OPENMP
+        use OMP_LIB
+#ENDIF
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        ! calculate the force to update the momentum field, ps: no dt multiply here
+        ! input: xfield, rfield, phifield, M matrix  output: force matrix
+        ! derivative comes from pure gauge action and the pseudo-fermion action
+
+        integer, external :: npbc
+        complex(dp), external :: zdotu, zdotc
+
+        ! local
+        integer :: i, ib, j, nt, nf, i_plaq, b_plaq, i4, i5, inf, ilf, icount
+        integer :: s1, e1, s2, e2
+        real(dp) :: force_bos, force_fer, force_newcode, phi_Aplaq_old, phi_Bplaq_old
+        complex(dp) :: vec_tau1(ndim), vec_tau2(ndim)
+
+        ! important
+        integer :: nt_in, nf_in, lf_in
+
+        hybrid_force2 = 0.d0
+        ! the order: nfam =4, lfam, and for each time slices with the support of openmp acceleration
+        do nf = nfam, 1, -1
+            do i = 1, lfam
+                do nt = 1, ltrot
+                    nf_in = nf
+                    lf_in = i
+                    nt_in = nt
+
+                    !!! force from the gauge action part
+#IFDEF COMPACT
+                    force_bos = ( dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot))) + &
+                                  dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot))) ) / (0.5d0*js*dtau)
+#ELSE
+                    force_bos = ( xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot)) +&
+                                  xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot)) ) / (0.5d0*js*dtau)
+#ENDIF
+
+                    ! boson_ratio for pi-flux pinning field
+                    if ( abs(jpi) .ne. 0.d0 ) then
+                        ! A plaq
+                        phi_Aplaq_old = 0.d0
+                        i_plaq = inv_Aplaq_bondcord(1,i,nf)
+                        b_plaq = inv_Aplaq_bondcord(2,i,nf)
+                        do ib = 1, 4
+                            if( ib .eq. b_plaq ) then
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(i,nf,nt)*sgnA_plaq(ib)
+                            else
+                                inf = plaq_bondcord(1,ib,i_plaq)
+                                ilf = plaq_bondcord(2,ib,i_plaq)
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(ilf,inf,nt)*sgnA_plaq(ib)
+                            end if
+                        end do
+                        ! Jpi part force, A plaq
+#IFDEF COMPACT
+                        force_bos = force_bos - dtau*jpi*sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
+#ELSE
+                        force_bos = force_bos + dtau*jpi*sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
+#ENDIF
+
+                        ! B plaq
+                        phi_Bplaq_old = 0.d0
+                        i_plaq = inv_Bplaq_bondcord(1,i,nf)
+                        b_plaq = inv_Bplaq_bondcord(2,i,nf)
+
+                        do ib = 1, 4
+                            if( ib .eq. b_plaq ) then
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(i,nf,nt)*sgnB_plaq(ib)
+                            else
+                                inf = plaq_bondcord(1,ib,i_plaq)
+                                ilf = plaq_bondcord(2,ib,i_plaq)
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*sgnB_plaq(ib)
+                            end if
+                        end do
+#IFDEF COMPACT
+                        force_bos = force_bos - dtau*jpi*sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
+#ELSE
+                        force_bos = force_bos + dtau*jpi*sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
+#ENDIF
+                    endif
+
+                    ! force from the gauge boson part
+                    hybrid_force2(i, nf, nt) = force_bos
+                enddo
+            enddo
+        enddo
+    endsubroutine fthmc_core_cal_force_bos
+
+
+    subroutine fthmc_core_md(phi, lfourier)
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        logical, intent(in) :: lfourier
+
+        ! local variables
+        integer :: nf, i
+        ! Fourier acceleration
+        complex(dp), allocatable :: z_tmp(:), z_tmp_x(:), z_tmp_p(:)
+
+        ! move the momentum field to t + dt/2, prepare the first force
+        call fthmc_core_cal_force(phi)
+
+        ! fourier acceleration, fft of force matrix
+        if ( lfourier ) then
+            do nf = 1, nfam
+                do i = 1, lfam
+                    z_tmp(:) = dcmplx(hybrid_force(i, nf, :), 0.d0)
+                    call onedimension_fft(ltrot, z_tmp)
+                    hybrid_force_k_z(i, nf, :) = z_tmp(:)
+                enddo
+            enddo
+            ! allocate tmp arrays
+            allocate(z_tmp(ltrot))
+            allocate(z_tmp_x(ltrot))
+            allocate(z_tmp_p(ltrot))
+        endif
+
+        do i = 1, mdstep
+            if ( lfourier ) then
+                !!! molecular dynamics with Fourier acceleration
+                ! update gauge field
+                do nf = 1, nfam
+                    do i = 1, lfam
+                        !! pfield
+                        z_tmp_p(:) = dcmplx(pfield(i, nf, :), 0.d0)
+                        call onedimension_fft(ltrot, z_tmp_p)
+
+                        !! update the xfield in momentum space
+                        z_tmp_x(:) = dcmplx(dt*pm , 0.d0) * a_k(:) * z_tmp_p(:) - dcmplx(pm*dt**2/2.d0, 0.d0) * a_k(:) * a_k(:) * hybrid_force_k_z(i, nf, :)
+
+                        !! inversed Fourier transformation
+                        call onedimension_invfft(ltrot, z_tmp_x)
+                        xfield(i, nf, :) = xfield(i, nf, :) + 1.d0/dble(ltrot) * dble(z_tmp_x(:))
+                    enddo
+                enddo
+
+                ! calculation the force at (n+1)
+                hybrid_force_n_k_z(:,:,:) = hybrid_force_k_z(:,:,:) ! preserve the F(n)
+
+                ! update the B matrix
+                call fthmc_core_x2B
+                ! calculate the inverse of MM matrix: (M^\dagger *M)^-1 phi = x_vec
+                call fthmc_core_cg(phi)
+                ! calculate the force with the updated xfield and M matrix
+                call fthmc_core_cal_force(phi)
+
+                ! update momentum field
+                do nf = 1, nfam
+                    do i = 1, lfam
+                        ! force vector
+                        z_tmp(:) = dcmplx(hybrid_force(i, nf, :), 0.d0)
+                        call onedimension_fft(ltrot, z_tmp)
+                        hybrid_force_k_z(i, nf, :) = z_tmp(:)
+
+                        !! pfield
+                        z_tmp_p(:) = dcmplx(pfield(i, nf, :), 0.d0)
+                        call onedimension_fft(ltrot, z_tmp_p)
+
+                        !! update the conjugate momentum field in momentum space
+                        z_tmp_p(:) = (-1.d0) * dcmplx(dt/2.d0, 0.d0) * a_k(:) * ( hybrid_force_n_k_z(i,nf,:) + hybrid_force_k_z(i,nf,:) )
+
+                        !! inversed Fourier transformation
+                        call onedimension_invfft(ltrot, z_tmp_p)
+                        pfield(i, nf, :) = pfield(i, nf, :) + 1.d0/dble(ltrot) * dble(z_tmp_p(:))
+                    enddo
+                enddo
+
+            else
+                ! md, leapfrog version 2
+                call cpu_time(tstart)
+                xfield(:,:,:) = xfield(:,:,:) + dt*pm*pfield(:,:,:) - pm*(dt**2/2.d0) * hybrid_force(:,:,:)
+                call cpu_time(tend); time_vec(4) = time_vec(4) + (tend-tstart)
+
+                ! update the B matrix
+                call fthmc_core_x2B
+
+                ! calculate the inverse of MM matrix: (M^\dagger *M)^-1 phi = x_vec
+                call cpu_time(tstart)
+                call fthmc_core_cg(phi)
+                call cpu_time(tend); time_vec(1) = time_vec(1) + (tend-tstart)
+
+                ! store n force
+                hybrid_force_n(:,:,:) = hybrid_force(:,:,:)
+                ! calculate the force with the updated xfield and M matrix
+                call fthmc_core_cal_force(phi)
+
+                call cpu_time(tstart)
+                pfield(:,:,:) = pfield(:,:,:) - dt/2.d0 * (hybrid_force(:,:,:) + hybrid_force_n(:,:,:))
+                call cpu_time(tend); time_vec(4) = time_vec(4) + (tend-tstart)
+            endif
+        enddo
+
+        if ( lfourier ) then
+            deallocate(z_tmp, z_tmp_x, z_tmp_p)
+        endif
+    endsubroutine fthmc_core_md
+
+
+    subroutine fthmc_core_md_splitting(phi, lfourier)
+        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
+        logical, intent(in) :: lfourier
+
+        ! local variables
+        integer :: nf, i
+        ! for test
+        integer :: j
+
+        ! move the momentum field to t + dt/2, prepare the first force
+        call fthmc_core_cal_force(phi)
+
+        do i = 1, mdstep
+            ! firstly update the momentum using force fermion
+            call cpu_time(tstart)
+            pfield(:,:,:) = pfield(:,:,:) - dt/2.d0*hybrid_force1(:,:,:)
+            call cpu_time(tend); time_vec(4) = time_vec(4) + (tend-tstart)
+
+            ! M inner leapfrog dynamics with effective stepsize \epsilon /M
+            ! boson force is 10 times larger that fermion force for J=1.0, K=0.0
+            do i =1, splitting_M
+                call cpu_time(tstart)
+                pfield(:,:,:) = pfield(:,:,:) - (dt/dble(splitting_M))/2.d0*hybrid_force2(:,:,:)
+                xfield(:,:,:) = xfield(:,:,:) + (dt/dble(splitting_M))*pm*pfield(:,:,:)
+                call cpu_time(tend); time_vec(4) = time_vec(4) + (tend-tstart)
+
+                ! calculate the force boson
+                call cpu_time(tstart)
+                call fthmc_core_cal_force_bos(phi)
+                call cpu_time(tend); time_vec(7) = time_vec(7) + (tend-tstart)
+
+                call cpu_time(tstart)
+                pfield(:,:,:) = pfield(:,:,:) - (dt/dble(splitting_M))/2.d0*hybrid_force2(:,:,:)
+                call cpu_time(tend); time_vec(4) = time_vec(4) + (tend-tstart)
+
+                ! for test
+                !do j = 1, lfam
+                !    write(111, '(e16.8)') hybrid_force2(j,1,1)
+                !enddo
+            enddo
+
+
+            ! lastly update the momentum using force fermion (prepare the force fermion before update)
+            ! update the B matrix
+            call fthmc_core_x2B
+
+            ! calculate the inverse of MM matrix: (M^\dagger *M)^-1 phi = x_vec
+            call cpu_time(tstart)
+            call fthmc_core_cg(phi)
+            call cpu_time(tend); time_vec(1) = time_vec(1) + (tend-tstart)
+
+            ! calculate the force with the updated xfield and M matrix
+            call fthmc_core_cal_force_fer(phi)
+
+            call cpu_time(tstart)
+            pfield(:,:,:) = pfield(:,:,:) - dt/2.d0 * hybrid_force1(:,:,:)
+            call cpu_time(tend); time_vec(4) = time_vec(4) + (tend-tstart)
+
+            ! for test
+            !do j = 1, lfam
+            !    write(222, '(e16.8)') hybrid_force1(j,1,1)
+            !enddo
+        enddo
+    endsubroutine fthmc_core_md_splitting
+
+
 
     subroutine fthmc_sweep_hybrid(lupdate, lmeasure_equaltime, lmeasure_dyn, lfourier, P0, T0, gfun0, phi)
         implicit none
@@ -31,20 +1035,20 @@ contains
         isfourier = lfourier
         if ( lupdate ) then
             ! initial momentum field and R field drawn from Gaussian distribution, also prepare the x_vec
-            call fthmc_hybrid_initfield(phi)
+            call fthmc_core_initfield(phi)
 
             ! calculate the energy before the MD
-            call fthmc_hybrid_cal_ener(ener_old, phi)
+            call fthmc_core_cal_ener(ener_old, phi)
             ener_pot_old = ener_pot
             ! save the gauge field configuration in case of rejection
-            call fthmc_hybrid_save
+            call fthmc_core_save
 
             ! molecular dynamics
-            !call fthmc_hybrid_md(phi, isfourier)
-            call fthmc_hybrid_md_splitting(phi, isfourier)
+            !call fthmc_core_md(phi, isfourier)
+            call fthmc_core_md_splitting(phi, isfourier)
 
             ! calculate the energy after the MD
-            call fthmc_hybrid_cal_ener(ener_new, phi)
+            call fthmc_core_cal_ener(ener_new, phi)
             ener_pot_new = ener_pot
             ! output the energy log just the main process
             if ( irank .eq. 0) then
@@ -64,7 +1068,7 @@ contains
             else
                 main_obs(1) = main_obs(1) + dcmplx( 0.d0, 1.0d0)
                 ! restore old configuration
-                call fthmc_hybrid_restore
+                call fthmc_core_restore
                 ener_pot_new = ener_pot_old
             endif
         endif
@@ -75,7 +1079,7 @@ contains
             call fthmc_gfun_initgt(gfun0)
 
             ! calculate green's function and do measurements
-            call fthmc_hybrid_calgfun_meas(gfun0, lmeasure_equaltime, lmeasure_dyn, P0, T0)
+            call fthmc_core_calgfun_meas(gfun0, lmeasure_equaltime, lmeasure_dyn, P0, T0)
             !call fthmc_hybrid_calgfun_meas_singlesource(gfun0, lmeasure_equaltime, lmeasure_dyn, P0, T0)
         endif
     end subroutine fthmc_sweep_hybrid

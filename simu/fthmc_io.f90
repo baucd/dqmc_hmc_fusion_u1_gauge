@@ -10,6 +10,7 @@ contains
         implicit none
 
         integer :: i, nwrap_mid
+        real(dp) :: r1, r2, eta
         logical :: exists
 
         ! default parameters
@@ -52,6 +53,7 @@ contains
         ! hmc control
         ltunedt = .false.
         luseinputdt = .false.
+        lfourier = .false.
 
         ! read parameters from ftdqmc.in input file
         if ( irank.eq.0 ) then
@@ -87,6 +89,7 @@ contains
                 call p_get( 'itermax'  , itermax )
                 call p_get( 'errate'   , errate  )
                 call p_get( 'ltunedt'  , ltunedt    )
+                call p_get( 'lfourier' , lfourier
                 call p_get( 'luseinputdt'  , luseinputdt    )
                 call p_destroy()
             end if
@@ -118,6 +121,7 @@ contains
         call mp_bcast( itermax,   0 )
         call mp_bcast( errate,   0 )
         call mp_bcast( ltunedt, 0 )
+        call mp_bcast( lfourier, 0 )
         call mp_bcast( luseinputdt, 0 )
         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
@@ -169,15 +173,64 @@ contains
             Ivec(i) = 1.d0
         end do
 
-        ! for u1 model
+        ! u1 model expvi
         allocate( zep_rsigl_k(lfam, nfam, ltrot) )
         allocate( zem_rsigl_k(lfam, nfam, ltrot) )
+
+        ! force related
+        allocate(hybrid_force1(lfam, nfam, ltrot))
+        allocate(hybrid_force2(lfam, nfam, ltrot))
+
+        allocate(pfield(lfam, nfam, ltrot))
+        !allocate(xfield(lfam, nfam, ltrot))
+        !allocate(xfield_tmp(lfam, nfam, ltrot))
+        allocate(hybrid_force(lfam, nfam, ltrot))
+        allocate(hybrid_force_n(lfam, nfam, ltrot))
+        allocate(Btau_vtau(ndim, 16, ltrot, int(Nflavor/2.d0)))
+        allocate(Btau2_vtau(ndim, 8, ltrot, int(Nflavor/2.d0)))
+#IFDEF DIRINV
+        allocate(M_inv(ndim*ltrot, ndim*ltrot))
+        allocate(Bmat_up(ndim, ndim, ltrot))
+        allocate(Bmat_up_tmp(ndim, ndim, ltrot))
+#ENDIF
+        if ( lfourier) then
+            allocate(hybrid_force_k_z(lfam, nfam, ltrot))
+            allocate(hybrid_force_n_k_z(lfam, nfam, ltrot))
+            allocate(a_k(ltrot))
+
+            !eta =0.005d0
+            eta =0.05d0
+            r2 =-4.d0+eta
+            do i = 0, ltrot-1
+                r1 = -1.d0 / (2.d0-2.d0*dcos(2.d0*pi*dble(i)/dble(ltrot)) + eta)
+                a_k(i+1) = dcmplx( dsqrt(r2*r1), 0.d0 )
+            enddo
+        endif
+
+
     endsubroutine fthmc_hamilt_init
 
 
     subroutine fthmc_hamilt_free
         deallocate( Ivec, Imat )
         deallocate( zep_rsigl_k, zem_rsigl_k)
+
+        deallocate(pfield)
+        !deallocate(xfield)
+        !deallocate(xfield_tmp)
+        deallocate(hybrid_force)
+        deallocate(hybrid_force_n)
+        deallocate(Btau_vtau)
+        deallocate(Btau2_vtau)
+#IFDEF DIRINV
+        deallocate(M_inv)
+        deallocate(Bmat_up)
+        deallocate(Bmat_up_tmp)
+#ENDIF
+        deallocate(hybrid_force1, hybrid_force2)
+        if (lfourier) then
+            deallocate(hybrid_force_k_z, hybrid_force_n_k_z, a_k)
+        endif
     endsubroutine fthmc_hamilt_free
 
 
@@ -293,6 +346,7 @@ contains
             write(fout,'(a,f7.3)')    ' errate = ', errate
             write(fout,*)  'ltau = ', ltau
             write(fout,*)  'ltunedt = ', ltunedt
+            write(fout,*)  'lfourier = ', lfourier
             write(fout,*)  'luseinputdt = ', luseinputdt
             write(fout,*)
 
