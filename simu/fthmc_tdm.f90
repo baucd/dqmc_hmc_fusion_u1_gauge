@@ -1,6 +1,6 @@
 module fthmc_tdm
     use ftdqmc_hamilt
-    use ftdqmc_latt
+    use fthmc_latt
     use fthmc_gfun
 
     implicit none

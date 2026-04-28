@@ -8,6 +8,7 @@ This project uses CMake for configuration and compilation. Below is a minimal ex
 cmake -DCMAKE_Fortran_COMPILER=mpiifx \
       -DENABLE_PIFLUX=ON \
       -DENABLE_DYNERR=ON \
+      -DENABLE_HMC=ON \
       ../
 ```
 

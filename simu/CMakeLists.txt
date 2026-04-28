@@ -2,8 +2,10 @@ cmake_minimum_required(VERSION 3.10)
 enable_language(Fortran)
 
 # hmc
-add_compile_options(-DHMC)
-add_compile_options(-DCGOPT)
+if(ENABLE_HMC)
+    add_compile_options(-DHMC)
+    add_compile_options(-DCGOPT)
+endif()
 
 if(ENABLE_PIFLUX)
     add_compile_options(-DPIFLUX)

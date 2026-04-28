@@ -1,7 +1,8 @@
 module fthmc_phy0
     use ftdqmc_hamilt
-    use ftdqmc_latt
+    use fthmc_latt
     use fthmc_gfun
+    use ftdqmc_auxfield_f5_class
 
     implicit none
     ! index for the array variables
@@ -97,13 +98,14 @@ contains
         endif
     endsubroutine ftdqmc_phy0_free
 
-    subroutine ftdqmc_phy0_meas(gfun0, P0)
+    subroutine ftdqmc_phy0_meas(gfun0, P0, phi_u1)
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
         implicit none
         type(phy0), intent(inout) :: P0
         type(gfun), intent(in) :: gfun0
+        class(ftdqmc_auxfield_f5), intent(in) :: phi_u1
 
         ! local
         integer :: i, j, imj, i1, i2, i3, nf, i_plaqA, i_plaqB, ib, inf, ilf, b_plaqA, b_plaqB, jax, jmx, iax, imx
@@ -116,6 +118,7 @@ contains
         complex(dp) :: zne, zkint, zejs, zejpi, zetot, zmz, zne_fluc
         complex(dp) :: ztmp1, ztmp2, ztmp3
         complex(dp), pointer :: grup(:,:,:)
+        real(dp), pointer :: xfield(:,:,:)
         complex(dp), allocatable :: grupc(:,:,:), grdn(:,:,:), grdnc(:,:,:)
 #IFDEF CUDA_MEAS
         complex(dp), allocatable :: grupc_vec(:), grdn_vec(:), grdnc_vec(:)
@@ -133,6 +136,8 @@ contains
 
         ! initial pointer, point to the nt equal time green's function
         grup => gfun0%grup(:,:,:)
+        xfield => phi_u1%gauge_u1
+
         ! alloc matrices
         allocate(grupc(ndim, ndim, ltrot))
         allocate(grdn(ndim, ndim, ltrot))
@@ -306,6 +311,7 @@ contains
         deallocate(grdn)
         deallocate(grdnc)
         nullify(grup)
+        nullify(xfield)
     endsubroutine ftdqmc_phy0_meas
 
 
@@ -386,7 +392,7 @@ contains
 #IFDEF _OPENMP
         USE OMP_LIB
 #ENDIF
-        use ftdqmc_latt
+        use fthmc_latt
 
         type(phy0), intent(in) :: P0
         integer, intent(in) :: idx

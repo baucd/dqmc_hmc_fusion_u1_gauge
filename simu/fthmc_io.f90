@@ -188,11 +188,11 @@ contains
         allocate(hybrid_force_n(lfam, nfam, ltrot))
         allocate(Btau_vtau(ndim, 16, ltrot, int(Nflavor/2.d0)))
         allocate(Btau2_vtau(ndim, 8, ltrot, int(Nflavor/2.d0)))
-#IFDEF DIRINV
+!#ifdef DIRINV
         allocate(M_inv(ndim*ltrot, ndim*ltrot))
         allocate(Bmat_up(ndim, ndim, ltrot))
         allocate(Bmat_up_tmp(ndim, ndim, ltrot))
-#ENDIF
+!#endif
         if ( lfourier) then
             allocate(hybrid_force_k_z(lfam, nfam, ltrot))
             allocate(hybrid_force_n_k_z(lfam, nfam, ltrot))
@@ -307,7 +307,7 @@ contains
 
     subroutine fthmc_initial_print
         use ftdqmc_hamilt
-        use ftdqmc_latt
+        use fthmc_latt
         implicit none
 
         ! local variables

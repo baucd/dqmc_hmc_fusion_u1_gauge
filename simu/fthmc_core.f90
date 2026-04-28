@@ -29,7 +29,7 @@ contains
 
         ! for the rfield
         do i = 1, int(Nflavor/2.d0)
-            call phi(i)%fthmc_rfield_init()
+            call phi(i)%fthmc_phi_rfield_init()
             ! also set the x_vec_old to zero
             phi(i)%x_vec_old = czero
             phi(i)%x_vec = chalf
@@ -43,7 +43,7 @@ contains
 
         ! obtain the x_vec
         call cpu_time(tstart)
-        call fthmc_core_cg(phi)
+        call fthmc_core_cg(phi, phi_u1)
         call cpu_time(tend); time_vec(1) = time_vec(1) + (tend-tstart)
 
         ! for test: cg gpu
