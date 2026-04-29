@@ -1,6 +1,6 @@
 module fthmc_tdm
     use ftdqmc_hamilt
-    use fthmc_latt
+    use ftdqmc_latt_sq_class
     use fthmc_gfun
 
     implicit none
@@ -30,6 +30,7 @@ endtype tdm
 contains
 
     subroutine ftdqmc_tdm_alloc(T0)
+        implicit none
         type(tdm), intent(inout) :: T0 ! tdm to be initalized
 
         ! local variables
@@ -62,6 +63,7 @@ contains
 
 
     subroutine ftdqmc_tdm_init(T0)
+        implicit none
         type(tdm), intent(inout) :: T0 ! tdm to be initalized
 
         ! initalization
@@ -74,6 +76,7 @@ contains
     endsubroutine ftdqmc_tdm_init
 
     subroutine ftdqmc_tdm_free(T0)
+        implicit none
         type(tdm), intent(inout) :: T0 ! tdm to be freed
 
         ! executable
@@ -84,7 +87,7 @@ contains
         endif
     endsubroutine ftdqmc_tdm_free
 
-    subroutine ftdqmc_tdm_meas(nt, gfun0, T0)
+    subroutine ftdqmc_tdm_meas(nt, gfun0, T0, latt)
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
@@ -92,6 +95,7 @@ contains
         type(tdm), intent(inout) :: T0
         type(gfun), intent(in), target :: gfun0
         integer, intent(in) :: nt
+        class(ftdqmc_latt_sq), intent(in) :: latt
 
         ! local variables
         complex(dp) :: ztmp
@@ -120,7 +124,7 @@ contains
 !!$OMP DO REDUCTION ( + : gfun_pnt, chiz_pnt)
         do j = 1, ndim
             do i = 1, ndim
-                imj  = latt_imj(i,j)
+                imj  = latt%latt_imj(i,j)
                 gfun_pnt(imj, nt) = gfun_pnt(imj, nt) + grt0_up(i,j)
                 ! szsz
                 ztmp = - gr0t_up(j,i)*grt0_up(i,j)
@@ -138,9 +142,10 @@ contains
         deallocate(gfun_pnt, chiz_pnt)
     endsubroutine ftdqmc_tdm_meas
 
-    subroutine ftdqmc_tdm_corFT(T0)
-        include 'mpif.h'
+    subroutine ftdqmc_tdm_corFT(T0, latt)
+        use mpi
         type(tdm), intent(in) :: T0
+        class(ftdqmc_latt_sq), intent(inout) :: latt
 
         ! local variables
         integer :: i
@@ -159,20 +164,21 @@ contains
             ! Fourier transformation
             if( irank .eq. 0 ) then
                 mpi_cor_bin = mpi_cor_bin / dcmplx(dble(isize*T0%nobs), 0.d0)
-                call ftdqmc_tdm_ft(mpi_cor_bin, file_root)
+                call ftdqmc_tdm_ft(mpi_cor_bin, file_root, latt)
             endif
 
         enddo
         call mpi_barrier( mpi_comm_world, ierr )
     endsubroutine ftdqmc_tdm_corFT
 
-    subroutine ftdqmc_tdm_ft(gr, file_root)
+    subroutine ftdqmc_tdm_ft(gr, file_root, latt)
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
         implicit none
         complex(dp), intent(in), dimension(:,:) :: gr
         character (40), intent(in) :: file_root
+        class(ftdqmc_latt_sq), intent(inout) :: latt
 
         ! local variables
         integer :: imj, iq, itau
@@ -189,14 +195,14 @@ contains
             open(unit=177,file=outname,status='unknown', action="write", position="append")
 
             ! retrive the k-point
-            qvec = dble( listk(iq,1))*b1_p + dble( listk(iq,2))*b2_p
+            qvec = dble( latt%listk(iq,1))*latt%b1_p + dble( latt%listk(iq,2))*latt%b2_p
 
             ! The first line of data is blank
             write(177, *)
 
             !!! for itau = ltrot, which is just tau=0 which is the equal time correlation
             gk = czero
-            gk = zdotu(lq, gr(:, ltrot), 1, cone/zexpiqr(:, iq), 1) ! use blas level 1 function: zdotu
+            gk = zdotu(lq, gr(:, ltrot), 1, cone/latt%zexpiqr(:, iq), 1) ! use blas level 1 function: zdotu
             write(177, '(2e16.8)') 0.d0, dble(gk*dcmplx(1.d0/dble(lq),0.d0))
 
             !!! output the tgrid to file for only one time
@@ -209,7 +215,7 @@ contains
             !!! for other tau
             do itau = 1, ltrot-1
                 gk = czero
-                gk = zdotu(lq, gr(:, itau), 1, cone/zexpiqr(:, iq), 1) ! use blas level 1 function: zdotu
+                gk = zdotu(lq, gr(:, itau), 1, cone/latt%zexpiqr(:, iq), 1) ! use blas level 1 function: zdotu
                 write(177, '(2e16.8)') dtau*dble(itau), dble(gk*dcmplx(1.d0/dble(lq),0.d0))
 
                 !!! output to tgrid.dat

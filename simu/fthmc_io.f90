@@ -128,8 +128,8 @@ contains
         ! tune parameters
         lq = l*l
         lfam = max(lq/2,1)
-        nfam = 4 ! for updating, something like the checkerboard decomposition
-        ndim = lq   ! the dimension of matrix inside determinant as well as the number of sites
+        nfam = 4       ! checkerboard decomposition
+        ndim = lq*norb ! dimension of matrix of determinant
         ltrot = nint( beta / dtau )
 
         ! mass re-scaling
@@ -305,10 +305,11 @@ contains
         end if
     end subroutine fthmc_initial_head
 
-    subroutine fthmc_initial_print
+    subroutine fthmc_initial_print(latt)
         use ftdqmc_hamilt
-        use fthmc_latt
+        use ftdqmc_latt_class
         implicit none
+        class(ftdqmc_latt), intent(in) :: latt
 
         ! local variables
         integer :: i, j, iq, imj
@@ -357,8 +358,8 @@ contains
             write(fout,'(a)')' --------------------- '
             write(fout,'(a)')'       listk(i, 1), listk(i, 2), i, kx, ky'
             do iq = 1, lq
-                qvec = dble(listk(iq,1))*b1_p + dble(listk(iq,2))*b2_p
-                write(fout, '(3i8, 2f16.8)') listk(iq,1), listk(iq,2), iq, qvec(:)
+                qvec = dble(latt%listk(iq,1))*latt%b1_p + dble(latt%listk(iq,2))*latt%b2_p
+                write(fout, '(3i8, 2f16.8)') latt%listk(iq,1), latt%listk(iq,2), iq, qvec(:)
             end do
 
             ! simulation banner

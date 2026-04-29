@@ -4,8 +4,10 @@ program fthmc_main
     use OMP_LIB
 #ENDIF
     use ftdqmc_hamilt
+    use ftdqmc_latt_class
+    use ftdqmc_latt_sq_class
     use fthmc_phi_class
-    use fthmc_latt
+    use ftdqmc_auxfield_class
     use ftdqmc_auxfield_f5_class
     use fthmc_core
     use fthmc_gfun
@@ -16,6 +18,7 @@ program fthmc_main
     implicit none
 
     ! local
+    type(ftdqmc_latt_sq) :: latt0
     type(fthmc_phi), dimension(:), pointer :: phi
     type(ftdqmc_auxfield_f5) :: phi_u1
     type(gfun)   :: gfun0
@@ -53,18 +56,23 @@ program fthmc_main
     ! time profiling
     time_vec(:) = zero
 
+    ! set latt_type and norb
+    latt0%latt_type = idx_sq; norb = 1
+
     ! hamilt init
     call fthmc_hamilt_init
 
-    ! latt
-    call fthmc_latt_alloc
-    call fthmc_latt_sli
-    call sltpf
+    ! latt, need update with latt0
+    !call fthmc_latt_alloc
+    !call fthmc_latt_sli
+    call latt0%ftdqmc_latt_alloc()
+    call latt0%ftdqmc_latt_sli()
+    call latt0%ftdqmc_latt_sq_sltpf()
 
-    ! print head
-    call fthmc_initial_head
-    ! print hamilt and lattice info
-    call fthmc_initial_print
+    !! print head
+    !call fthmc_initial_head
+    !! print hamilt and lattice info
+    !call fthmc_initial_print
 
     ! pseudo fermion and u1 gauge field
     allocate(phi(int(Nflavor/2.d0)))
@@ -93,11 +101,17 @@ program fthmc_main
 #endif
 #endif
 
-    ! decide whether to warmup
-    if ( ltunedt ) lwarmup = .true.
-    if ( luseinputdt ) then
+    ! print header
+    call fthmc_initial_head
+    ! print hamilt and lattice info
+    call fthmc_initial_print(latt0)
+
+    ! decide whether do warmup
+    if ( ltunedt .and. .not. luseinputdt) then
+        lwarmup = .true.
+    else
         lwarmup = .false.
-        dt = inputdt
+        if (luseinputdt) dt = inputdt
     endif
 
     ! warmup
@@ -108,11 +122,10 @@ program fthmc_main
         call cpu_time(time0)
 #endif
 
-
 #ifndef FINETUNE
         ! perform warmup sweeps
         do i = 1, nwarmup
-            call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi, phi_u1=phi_u1)
+            call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi, phi_u1=phi_u1, latt0=latt0)
         enddo
 #else
         ! prepare warmup log output
@@ -137,7 +150,7 @@ program fthmc_main
             ! test runs
             do i = 1, nstat
                 nsw = nsw + 1
-                call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., lfourier=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi, phi_u1=phi_u1)
+                call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., lfourier=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi, phi_u1=phi_u1, latt0=latt0)
                 if ( i .eq. 1)     ener_pot_old_local = ener_pot_old
                 if ( i .eq. nstat) ener_pot_new_local = ener_pot_new
             enddo
@@ -199,7 +212,7 @@ program fthmc_main
             do j = 1, nequi
                 ! test runs
                 do i = 1, nstat
-                    call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., lfourier=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi, phi_u1=phi_u1)
+                    call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.false.,lmeasure_dyn=.false., lfourier=.false., P0=P0, T0=T0, gfun0=gfun0, phi=phi, phi_u1=phi_u1, latt0=latt0)
                     if ( i .eq. 1)     ener_pot_old_local = ener_pot_old
                     if ( i .eq. nstat) ener_pot_old_local = ener_pot_new
                 enddo
@@ -279,13 +292,13 @@ program fthmc_main
         if (ltau) call fthmc_tdm_init(T0)
 
         do nsw = 1, nsweep
-            call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.true., lmeasure_dyn=ltau, P0=P0, T0=T0, gfun0=gfun0, phi=phi)
+            call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.true., lmeasure_dyn=ltau, P0=P0, T0=T0, gfun0=gfun0, phi=phi, latt0=latt0)
         end do
 
         ! avg, ft and output configurations
         call fthmc_phy0_getavg(P0) ! scalar properties
-        call fthmc_phy0_corFT(P0)  ! sq
-        if(ltau) call fthmc_tdm_corFT(T0) ! sq(tau)
+        call fthmc_phy0_corFT(P0, latt0)  ! sq
+        if(ltau) call fthmc_tdm_corFT(T0, latt0) ! sq(tau)
 
         ! output configurations
         call phi_u1%ftdqmc_auxfield_outconfc()
@@ -323,12 +336,12 @@ program fthmc_main
         write(fout,'(a,e16.8)') ' >>> accept_ratio  = ', dble(mpi_main_obs(1))/aimag(mpi_main_obs(1))
     end if
 
+    ! free space
+    call latt0%ftdqmc_latt_free()
+    call phi_u1%ftdqmc_auxfield_free()
     do icount = 1, int(Nflavor/2.d0)
         call phi(icount)%ftdqmc_phi_free()
     enddo
-    call fthmc_latt_free
-    call fthmc_matrix_free
-    call fthmc_hybrid_free
     if ( ltau ) call fthmc_tdm_free(T0)
     call fthmc_phy0_free(P0)
     call fthmc_gfun_free(gfun0)

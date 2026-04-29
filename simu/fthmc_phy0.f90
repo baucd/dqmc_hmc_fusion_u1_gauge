@@ -1,8 +1,8 @@
 module fthmc_phy0
     use ftdqmc_hamilt
-    use fthmc_latt
-    use fthmc_gfun
+    use ftdqmc_latt_sq_class
     use ftdqmc_auxfield_f5_class
+    use fthmc_gfun
 
     implicit none
     ! index for the array variables
@@ -44,6 +44,7 @@ endtype phy0
 contains
 
     subroutine ftdqmc_phy0_alloc(P0)
+        implicit none
         type(phy0), intent(inout) :: P0 ! phy0 to be initalized
 
         ! local variables
@@ -76,6 +77,7 @@ contains
 
 
     subroutine ftdqmc_phy0_init(P0)
+        implicit none
         type(phy0), intent(inout) :: P0 ! phy0 to be initalized
         ! initalization
         P0%meas   = czero
@@ -86,6 +88,7 @@ contains
     endsubroutine ftdqmc_phy0_init
 
     subroutine ftdqmc_phy0_free(P0)
+        implicit none
         type(phy0), intent(inout) :: P0 ! phy0 to be freed
 
         ! executable
@@ -98,7 +101,7 @@ contains
         endif
     endsubroutine ftdqmc_phy0_free
 
-    subroutine ftdqmc_phy0_meas(gfun0, P0, phi_u1)
+    subroutine ftdqmc_phy0_meas(gfun0, P0, phi_u1, latt)
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
@@ -106,6 +109,7 @@ contains
         type(phy0), intent(inout) :: P0
         type(gfun), intent(in) :: gfun0
         class(ftdqmc_auxfield_f5), intent(in) :: phi_u1
+        class(ftdqmc_latt_sq), intent(in) :: latt
 
         ! local
         integer :: i, j, imj, i1, i2, i3, nf, i_plaqA, i_plaqB, ib, inf, ilf, b_plaqA, b_plaqB, jax, jmx, iax, imx
@@ -164,9 +168,9 @@ contains
                         grdn (j,i,nt) = grup (j,i,nt)
                         grdnc(j,i,nt) = grupc(j,i,nt)
                     else
-                        nx_j = list(j,1);ny_j = list(j,2)
+                        nx_j = latt%list(j,1);ny_j = latt%list(j,2)
                         xj = 1.d0; if ( mod(nx_j,2) .ne. mod(ny_j,2) ) xj = -1.d0
-                        nx_i = list(i,1);ny_i = list(i,2)
+                        nx_i = latt%list(i,1);ny_i = latt%list(i,2)
                         xi = 1.d0; if ( mod(nx_i,2) .ne. mod(ny_i,2) ) xi = -1.d0
 
                         grdn (j,i,nt) = dcmplx(xj*xi, 0.d0)*dconjg ( grupc(j,i,nt) )
@@ -178,13 +182,13 @@ contains
             ! fermion correlation functions
             do j = 1, ndim
                 do i = 1, ndim
-                    imj = latt_imj(i,j)
+                    imj = latt%latt_imj(i,j)
 
                     ! first dimer-dimer correlation
-                    jax = nnlist(j,1) ! j+x
-                    jmx = nnlist(j,3) ! j-x
-                    iax = nnlist(i,1) ! i+x
-                    imx = nnlist(i,3) ! i-x
+                    jax = latt%nnlist(j,1) ! j+x
+                    jmx = latt%nnlist(j,3) ! j-x
+                    iax = latt%nnlist(i,1) ! i+x
+                    imx = latt%nnlist(i,3) ! i-x
                     P0%Dimer(imj) = P0%Dimer(imj) + grupc(i,iax,nt)*grup(i,iax,nt)*grupc(j,jax,nt)  *grup(j,jax,nt)  *z4  &
                                                   + grupc(i,j,nt)  *grup(i,j,nt)  *grupc(iax,jax,nt)*grup(iax,jax,nt)*z2  &
                                                   + grupc(i,jax,nt)*grup(i,jax,nt)*grupc(iax,j,nt)  *grup(iax,j,nt)  *z2  &
@@ -248,30 +252,30 @@ contains
             ! gauge field part
             do nf = 1, nfam
                 do i = 1, lfam
-	               i1 = l_bonds(1,i,nf)
-	               i2 = l_bonds(2,i,nf)
+	               i1 = latt%l_bonds(1,i,nf)
+	               i2 = latt%l_bonds(2,i,nf)
 
                    ztmp1 = zep_rsigl_k(i,nf, npbc(nt-1, ltrot) ) /cinvsqrt2 * (grupc(i1,i2,nt) + grdnc(i1,i2,nt))
                    zkint = zkint  +  ztmp1 + dconjg(ztmp1)
 
                    ! A plaq
                    phi_Aplaq = 0.d0
-                   i_plaqA = inv_Aplaq_bondcord(1,i,nf)
-                   b_plaqA = inv_Aplaq_bondcord(2,i,nf)
+                   i_plaqA = latt%inv_Aplaq_bondcord(1,i,nf)
+                   b_plaqA = latt%inv_Aplaq_bondcord(2,i,nf)
                    do ib = 1, 4
-                       inf = plaq_bondcord(1,ib,i_plaqA)
-                       ilf = plaq_bondcord(2,ib,i_plaqA)
+                       inf = latt%plaq_bondcord(1,ib,i_plaqA)
+                       ilf = latt%plaq_bondcord(2,ib,i_plaqA)
                        phi_Aplaq = phi_Aplaq + xfield(ilf,inf,nt)*sgnA_plaq(ib)
                    end do
                    netflux(nt) = netflux(nt) + floor(phi_Aplaq/(2.d0*pi))
 
                    ! B plaq
                    phi_Bplaq = 0.d0
-                   i_plaqB = inv_Bplaq_bondcord(1,i,nf)
-                   b_plaqB = inv_Bplaq_bondcord(2,i,nf)
+                   i_plaqB = latt%inv_Bplaq_bondcord(1,i,nf)
+                   b_plaqB = latt%inv_Bplaq_bondcord(2,i,nf)
                    do ib = 1, 4
-                       inf = plaq_bondcord(1,ib,i_plaqB)
-                       ilf = plaq_bondcord(2,ib,i_plaqB)
+                       inf = latt%plaq_bondcord(1,ib,i_plaqB)
+                       ilf = latt%plaq_bondcord(2,ib,i_plaqB)
                        phi_Bplaq = phi_Bplaq + xfield(ilf,inf,nt)*sgnB_plaq(ib)
                    end do
                    netflux(nt) = netflux(nt) + floor(phi_Bplaq/(2.d0*pi))
@@ -317,8 +321,9 @@ contains
 
     subroutine ftdqmc_phy0_getavg(P0)
         ! scalar quantities
-        include 'mpif.h'
+        use mpi
 
+        implicit none
         type(phy0), intent(inout) :: P0
 
         ! local variables
@@ -349,10 +354,12 @@ contains
         call mpi_barrier( mpi_comm_world, ierr )
     endsubroutine ftdqmc_phy0_getavg
 
-    subroutine ftdqmc_phy0_corFT(P0)
-        include 'mpif.h'
+    subroutine ftdqmc_phy0_corFT(P0, latt)
+        use mpi
+        implicit none
 
         type(phy0), intent(in) :: P0
+        class(ftdqmc_latt_sq), intent(inout) :: latt
 
         ! local variables
         integer :: i
@@ -378,9 +385,9 @@ contains
             ! Fourier transformation
             if( irank .eq. 0 ) then
                 if ( i .eq. IDIME ) then
-                    call ftdqmc_phy0_ft(mpi_cor_bin_dimer, filename1, filename2, i, P0)
+                    call ftdqmc_phy0_ft(mpi_cor_bin_dimer, filename1, filename2, i, P0, latt)
                 elseif ( i .eq. ISPSM ) then
-                    call ftdqmc_phy0_ft(mpi_cor_bin_afm, filename1, filename2, i, P0)
+                    call ftdqmc_phy0_ft(mpi_cor_bin_afm, filename1, filename2, i, P0, latt)
                 endif
             endif
 
@@ -388,16 +395,17 @@ contains
         call mpi_barrier( mpi_comm_world, ierr )
     endsubroutine ftdqmc_phy0_corFT
 
-    subroutine ftdqmc_phy0_ft(cor, filename1, filename2, idx, P0)
+    subroutine ftdqmc_phy0_ft(cor, filename1, filename2, idx, P0, latt)
 #IFDEF _OPENMP
         USE OMP_LIB
 #ENDIF
-        use fthmc_latt
 
+        implicit none
         type(phy0), intent(in) :: P0
         integer, intent(in) :: idx
         complex(dp), intent(in), dimension(:) :: cor
         character(40), intent(in) :: filename1, filename2
+        class(ftdqmc_latt_sq), intent(in) :: latt
 
         ! local variables
         integer :: imj, iq, i, j, order_idx
@@ -422,11 +430,11 @@ contains
 
         ! loop over k points
         do iq = 1, lq
-            qvec = dble( listk(iq,1))*b1_p + dble( listk(iq,2))*b2_p
+            qvec = dble( latt%listk(iq,1))*latt%b1_p + dble( latt%listk(iq,2))*latt%b2_p
             cork = czero
 
             ! use blas level 1 function: zdotu
-            cork = zdotu(lq, cor(:), 1, cone/zexpiqr(:, iq), 1)
+            cork = zdotu(lq, cor(:), 1, cone/latt%zexpiqr(:, iq), 1)
 
             if ( iq .ne. order_idx ) then
                 write(177, '(2f8.4, 2x, e16.8)') qvec(1), qvec(2), dble(cork*dcmplx(1.d0/dble(lq),0.d0))
