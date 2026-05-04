@@ -9,6 +9,7 @@ cmake -DCMAKE_Fortran_COMPILER=mpiifx \
       -DENABLE_PIFLUX=ON \
       -DENABLE_DYNERR=ON \
       -DENABLE_HMC=ON \
+      -DENABLE_COMPACT=ON \
       ../
 ```
 
@@ -48,6 +49,9 @@ cmake -DCMAKE_Fortran_COMPILER=mpiifx \
 
 ### ENABLE_HMC
 * Description: Use HMC code.
+
+### ENABLE_COMPACT
+* Description: Compact *J* and *K* term.
 
 ### ENABLE_CUDA_CG
 * Description: Use CUDA and nvidia GPU computation for HMC CG. Not CUDA, because DQMC code also use CUDA flag but not very usable.

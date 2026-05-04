@@ -670,13 +670,13 @@ contains
                     call phi_u1%ftdqmc_auxfield_force_p2_Btau_vtau(lf_in, nf_in, nt_in, force_fer, latt) ! return the force
 
                     ! force from the gauge action part
-#IFDEF COMPACT
+#ifdef COMPACT
                     force_bos = ( dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot))) + &
                                   dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot))) ) / (0.5d0*js*dtau)
-#ELSE
+#else
                     force_bos = ( xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot)) +&
                                   xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot)) ) / (0.5d0*js*dtau)
-#ENDIF
+#endif
 
                     ! boson_ratio for pi-flux pinning field
                     if ( abs(jpi) .ne. 0.d0 ) then
@@ -694,11 +694,11 @@ contains
                             end if
                         end do
                         ! Jpi part force, A plaq
-#IFDEF COMPACT
+#ifdef COMPACT
                         force_bos = force_bos - dtau*jpi*latt%sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
-#ELSE
+#else
                         force_bos = force_bos + dtau*jpi*latt%sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
-#ENDIF
+#endif
 
                         ! B plaq
                         phi_Bplaq_old = 0.d0
@@ -714,11 +714,11 @@ contains
                                 phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*latt%sgnB_plaq(ib)
                             end if
                         end do
-#IFDEF COMPACT
+#ifdef COMPACT
                         force_bos = force_bos - dtau*jpi*latt%sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
-#ELSE
+#else
                         force_bos = force_bos + dtau*jpi*latt%sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
-#ENDIF
+#endif
                     endif
 
                     ! combine the force from gauge boson and fermion part together
@@ -744,9 +744,9 @@ contains
 
 
     subroutine fthmc_core_cal_force_fer(phi, phi_u1, latt)
-#IFDEF _OPENMP
+#ifdef _OPENMP
         use OMP_LIB
-#ENDIF
+#endif
         implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
@@ -799,9 +799,9 @@ contains
 
 
     subroutine fthmc_core_cal_force_bos(phi, phi_u1, latt)
-#IFDEF _OPENMP
+#ifdef _OPENMP
         use OMP_LIB
-#ENDIF
+#endif
         implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
@@ -836,13 +836,13 @@ contains
                     nt_in = nt
 
                     !!! force from the gauge action part
-#IFDEF COMPACT
+#ifdef COMPACT
                     force_bos = ( dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot))) + &
                                   dsin(xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot))) ) / (0.5d0*js*dtau)
-#ELSE
+#else
                     force_bos = ( xfield(i,nf,nt)-xfield(i,nf,npbc(nt-1,ltrot)) +&
                                   xfield(i,nf,nt)-xfield(i,nf,npbc(nt+1,ltrot)) ) / (0.5d0*js*dtau)
-#ENDIF
+#endif
 
                     ! boson_ratio for pi-flux pinning field
                     if ( abs(jpi) .ne. 0.d0 ) then
@@ -860,11 +860,11 @@ contains
                             end if
                         end do
                         ! Jpi part force, A plaq
-#IFDEF COMPACT
+#ifdef COMPACT
                         force_bos = force_bos - dtau*jpi*latt%sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
-#ELSE
+#else
                         force_bos = force_bos + dtau*jpi*latt%sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
-#ENDIF
+#endif
 
                         ! B plaq
                         phi_Bplaq_old = 0.d0
@@ -880,11 +880,11 @@ contains
                                 phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*latt%sgnB_plaq(ib)
                             end if
                         end do
-#IFDEF COMPACT
+#ifdef COMPACT
                         force_bos = force_bos - dtau*jpi*latt%sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
-#ELSE
+#else
                         force_bos = force_bos + dtau*jpi*latt%sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
-#ENDIF
+#endif
                     endif
 
                     ! force from the gauge boson part
@@ -1023,12 +1023,21 @@ contains
         integer :: nf, i, ncount
         real(dp), POINTER :: xfield(:,:,:)
         ! for test
-        integer :: j
+        integer :: j, lf, nt
 
         xfield => phi_u1%gauge_u1
 
         ! move the momentum field to t + dt/2, prepare the first force
         call fthmc_core_cal_force(phi, phi_u1, latt)
+        ! for test: output gauge field after inner dynamics
+        !do nt =1, ltrot
+        !do nf =1, nfam
+        !do lf =1, lfam
+        !    write(*,'(2e16.8)') hybrid_force1(lf, nf, nt), hybrid_force2(lf, nf, nt)
+        !enddo
+        !enddo
+        !enddo
+        !stop
 
         do i = 1, mdstep
             ! firstly update the momentum using force fermion
@@ -1059,6 +1068,15 @@ contains
                 !enddo
             enddo
 
+            ! for test: output gauge field after inner dynamics
+            !do nt =1, ltrot
+            !do nf =1, nfam
+            !do lf =1, lfam
+            !    write(*,*) xfield(lf, nf, nt)
+            !enddo
+            !enddo
+            !enddo
+            !stop
 
             ! lastly update the momentum using force fermion (prepare the force fermion before update)
             ! update the B matrix
@@ -1135,6 +1153,7 @@ contains
             ! accept/reject
             random = spring_sfmt_stream()
             if ( ratio .gt. random) then
+            !if ( random .gt. 0.5d0) then
             !if ( .true. ) then
             !if ( .false. ) then
                 main_obs(1) = main_obs(1) + dcmplx( 1.d0, 1.0d0)
