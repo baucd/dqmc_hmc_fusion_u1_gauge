@@ -1,6 +1,6 @@
 module fthmc_tdm
     use ftdqmc_hamilt
-    use ftdqmc_latt_sq_class
+    use ftdqmc_latt_class
     use fthmc_gfun
 
     implicit none
@@ -29,7 +29,7 @@ endtype tdm
 
 contains
 
-    subroutine ftdqmc_tdm_alloc(T0)
+    subroutine fthmc_tdm_alloc(T0)
         implicit none
         type(tdm), intent(inout) :: T0 ! tdm to be initalized
 
@@ -59,10 +59,10 @@ contains
 
         T0%init = .true.
 
-    endsubroutine ftdqmc_tdm_alloc
+    endsubroutine fthmc_tdm_alloc
 
 
-    subroutine ftdqmc_tdm_init(T0)
+    subroutine fthmc_tdm_init(T0)
         implicit none
         type(tdm), intent(inout) :: T0 ! tdm to be initalized
 
@@ -73,9 +73,9 @@ contains
         ! reset count
         T0%nobs   = 0
 
-    endsubroutine ftdqmc_tdm_init
+    endsubroutine fthmc_tdm_init
 
-    subroutine ftdqmc_tdm_free(T0)
+    subroutine fthmc_tdm_free(T0)
         implicit none
         type(tdm), intent(inout) :: T0 ! tdm to be freed
 
@@ -85,9 +85,9 @@ contains
             deallocate(T0%AllProp)
             deallocate(T0%IARR)
         endif
-    endsubroutine ftdqmc_tdm_free
+    endsubroutine fthmc_tdm_free
 
-    subroutine ftdqmc_tdm_meas(nt, gfun0, T0, latt)
+    subroutine fthmc_tdm_meas(nt, gfun0, T0, latt)
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
@@ -95,7 +95,7 @@ contains
         type(tdm), intent(inout) :: T0
         type(gfun), intent(in), target :: gfun0
         integer, intent(in) :: nt
-        class(ftdqmc_latt_sq), intent(in) :: latt
+        class(ftdqmc_latt), intent(in) :: latt
 
         ! local variables
         complex(dp) :: ztmp
@@ -140,12 +140,12 @@ contains
 
         nullify(grt0_up, gr0t_up, grtt_up, gr00_up)
         deallocate(gfun_pnt, chiz_pnt)
-    endsubroutine ftdqmc_tdm_meas
+    endsubroutine fthmc_tdm_meas
 
-    subroutine ftdqmc_tdm_corFT(T0, latt)
+    subroutine fthmc_tdm_corFT(T0, latt)
         use mpi
         type(tdm), intent(in) :: T0
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
         integer :: i
@@ -164,21 +164,21 @@ contains
             ! Fourier transformation
             if( irank .eq. 0 ) then
                 mpi_cor_bin = mpi_cor_bin / dcmplx(dble(isize*T0%nobs), 0.d0)
-                call ftdqmc_tdm_ft(mpi_cor_bin, file_root, latt)
+                call fthmc_tdm_ft(mpi_cor_bin, file_root, latt)
             endif
 
         enddo
         call mpi_barrier( mpi_comm_world, ierr )
-    endsubroutine ftdqmc_tdm_corFT
+    endsubroutine fthmc_tdm_corFT
 
-    subroutine ftdqmc_tdm_ft(gr, file_root, latt)
+    subroutine fthmc_tdm_ft(gr, file_root, latt)
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
         implicit none
         complex(dp), intent(in), dimension(:,:) :: gr
         character (40), intent(in) :: file_root
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
         integer :: imj, iq, itau
@@ -228,5 +228,5 @@ contains
             close(177)
             close(100)
         end do
-    endsubroutine ftdqmc_tdm_ft
+    endsubroutine fthmc_tdm_ft
 endmodule fthmc_tdm

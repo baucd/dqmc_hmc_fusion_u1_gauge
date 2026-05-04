@@ -1,6 +1,6 @@
 module fthmc_phy0
     use ftdqmc_hamilt
-    use ftdqmc_latt_sq_class
+    use ftdqmc_latt_class
     use ftdqmc_auxfield_f5_class
     use fthmc_gfun
 
@@ -43,7 +43,7 @@ endtype phy0
 
 contains
 
-    subroutine ftdqmc_phy0_alloc(P0)
+    subroutine fthmc_phy0_alloc(P0)
         implicit none
         type(phy0), intent(inout) :: P0 ! phy0 to be initalized
 
@@ -73,10 +73,10 @@ contains
         P0%Dimer   =>  P0%AllProp( P0%IARR(IDIME) : P0%IARR(IDIME+1) - 1)
         P0%Spsm    =>  P0%AllProp( P0%IARR(ISPSM) : P0%IARR(ISPSM+1) - 1)
         P0%init = .true.
-    endsubroutine ftdqmc_phy0_alloc
+    endsubroutine fthmc_phy0_alloc
 
 
-    subroutine ftdqmc_phy0_init(P0)
+    subroutine fthmc_phy0_init(P0)
         implicit none
         type(phy0), intent(inout) :: P0 ! phy0 to be initalized
         ! initalization
@@ -85,9 +85,9 @@ contains
         P0%Spsm   = czero
         P0%nobs   = 0
 
-    endsubroutine ftdqmc_phy0_init
+    endsubroutine fthmc_phy0_init
 
-    subroutine ftdqmc_phy0_free(P0)
+    subroutine fthmc_phy0_free(P0)
         implicit none
         type(phy0), intent(inout) :: P0 ! phy0 to be freed
 
@@ -99,9 +99,9 @@ contains
             deallocate(P0%AllProp)
             deallocate(P0%IARR)
         endif
-    endsubroutine ftdqmc_phy0_free
+    endsubroutine fthmc_phy0_free
 
-    subroutine ftdqmc_phy0_meas(gfun0, P0, phi_u1, latt)
+    subroutine fthmc_phy0_meas(gfun0, P0, phi_u1, latt)
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
@@ -109,7 +109,7 @@ contains
         type(phy0), intent(inout) :: P0
         type(gfun), intent(in) :: gfun0
         class(ftdqmc_auxfield_f5), intent(in) :: phi_u1
-        class(ftdqmc_latt_sq), intent(in) :: latt
+        class(ftdqmc_latt), intent(in) :: latt
 
         ! local
         integer :: i, j, imj, i1, i2, i3, nf, i_plaqA, i_plaqB, ib, inf, ilf, b_plaqA, b_plaqB, jax, jmx, iax, imx
@@ -265,7 +265,7 @@ contains
                    do ib = 1, 4
                        inf = latt%plaq_bondcord(1,ib,i_plaqA)
                        ilf = latt%plaq_bondcord(2,ib,i_plaqA)
-                       phi_Aplaq = phi_Aplaq + xfield(ilf,inf,nt)*sgnA_plaq(ib)
+                       phi_Aplaq = phi_Aplaq + xfield(ilf,inf,nt)*latt%sgnA_plaq(ib)
                    end do
                    netflux(nt) = netflux(nt) + floor(phi_Aplaq/(2.d0*pi))
 
@@ -276,7 +276,7 @@ contains
                    do ib = 1, 4
                        inf = latt%plaq_bondcord(1,ib,i_plaqB)
                        ilf = latt%plaq_bondcord(2,ib,i_plaqB)
-                       phi_Bplaq = phi_Bplaq + xfield(ilf,inf,nt)*sgnB_plaq(ib)
+                       phi_Bplaq = phi_Bplaq + xfield(ilf,inf,nt)*latt%sgnB_plaq(ib)
                    end do
                    netflux(nt) = netflux(nt) + floor(phi_Bplaq/(2.d0*pi))
 
@@ -316,10 +316,10 @@ contains
         deallocate(grdnc)
         nullify(grup)
         nullify(xfield)
-    endsubroutine ftdqmc_phy0_meas
+    endsubroutine fthmc_phy0_meas
 
 
-    subroutine ftdqmc_phy0_getavg(P0)
+    subroutine fthmc_phy0_getavg(P0)
         ! scalar quantities
         use mpi
 
@@ -352,14 +352,14 @@ contains
         endif
 
         call mpi_barrier( mpi_comm_world, ierr )
-    endsubroutine ftdqmc_phy0_getavg
+    endsubroutine fthmc_phy0_getavg
 
-    subroutine ftdqmc_phy0_corFT(P0, latt)
+    subroutine fthmc_phy0_corFT(P0, latt)
         use mpi
         implicit none
 
         type(phy0), intent(in) :: P0
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
         integer :: i
@@ -385,17 +385,17 @@ contains
             ! Fourier transformation
             if( irank .eq. 0 ) then
                 if ( i .eq. IDIME ) then
-                    call ftdqmc_phy0_ft(mpi_cor_bin_dimer, filename1, filename2, i, P0, latt)
+                    call fthmc_phy0_ft(mpi_cor_bin_dimer, filename1, filename2, i, P0, latt)
                 elseif ( i .eq. ISPSM ) then
-                    call ftdqmc_phy0_ft(mpi_cor_bin_afm, filename1, filename2, i, P0, latt)
+                    call fthmc_phy0_ft(mpi_cor_bin_afm, filename1, filename2, i, P0, latt)
                 endif
             endif
 
         enddo
         call mpi_barrier( mpi_comm_world, ierr )
-    endsubroutine ftdqmc_phy0_corFT
+    endsubroutine fthmc_phy0_corFT
 
-    subroutine ftdqmc_phy0_ft(cor, filename1, filename2, idx, P0, latt)
+    subroutine fthmc_phy0_ft(cor, filename1, filename2, idx, P0, latt)
 #IFDEF _OPENMP
         USE OMP_LIB
 #ENDIF
@@ -405,7 +405,7 @@ contains
         integer, intent(in) :: idx
         complex(dp), intent(in), dimension(:) :: cor
         character(40), intent(in) :: filename1, filename2
-        class(ftdqmc_latt_sq), intent(in) :: latt
+        class(ftdqmc_latt), intent(in) :: latt
 
         ! local variables
         integer :: imj, iq, i, j, order_idx
@@ -449,6 +449,6 @@ contains
         end do
         close(178)
         close(177)
-    endsubroutine ftdqmc_phy0_ft
+    endsubroutine fthmc_phy0_ft
 
 endmodule fthmc_phy0

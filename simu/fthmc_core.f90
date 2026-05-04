@@ -2,20 +2,21 @@ module fthmc_core
     use spring
     use ftdqmc_hamilt
     use ftdqmc_latt_class
-    use ftdqmc_latt_sq_class
     use ftdqmc_auxfield_f5_class
     use fthmc_phi_class
+    use fthmc_io
     use fthmc_gfun
     use fthmc_phy0
     use fthmc_tdm
     implicit none
 
 contains
-    subroutine fthmc_core_initfield(phi, phi_u1)
+    subroutine fthmc_core_initfield(phi, phi_u1, latt)
         ! initialize the momentum field and the R field at the start of MD, draw from Gaussian distribution
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
         integer :: i, nn, nt, ntau, i1, i2, j1, j2
@@ -40,12 +41,12 @@ contains
         ! calculate the phifield, M matrix (actually the B matrix) is always set
         call cpu_time(tstart)
         !call fthmc_matrix_calphi_sparse(phi)
-        call phi_u1%Md_mv_to_phi_sparse(phi)
+        call phi_u1%Md_mv_to_phi_sparse(phi, latt)
         call cpu_time(tend); time_vec(3) = time_vec(3) + (tend-tstart)
 
         ! obtain the x_vec
         call cpu_time(tstart)
-        call fthmc_core_cg(phi, phi_u1)
+        call fthmc_core_cg(phi, phi_u1, latt)
         call cpu_time(tend); time_vec(1) = time_vec(1) + (tend-tstart)
 
         ! for test: cg gpu
@@ -57,10 +58,10 @@ contains
 #IFNDEF CUDA
         use fthmc_conjugate
 #ENDIF
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! conjugate gradient to calculate M^T * M for force as well as the Green's function
         ! input: MM output: (M^T*M)^-1 phi = x_vec, x_vec is enough
@@ -100,10 +101,10 @@ contains
 #IFNDEF CUDA
         use fthmc_conjugate
 #ENDIF
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! conjugate gradient to calculate M^T * M for force as well as the Green's function
         ! input: MM output: (M^T*M)^-1 phi = x_vec, x_vec is enough
@@ -176,10 +177,10 @@ contains
 #IFNDEF CUDA
         use fthmc_conjugate
 #ENDIF
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! conjugate gradient to calculate M^T * M for force as well as the Green's function
         ! input: MM output: (M^T*M)^-1 phi = x_vec, x_vec is enough
@@ -204,12 +205,12 @@ contains
 
 
     subroutine fthmc_core_cal_ener(energy, phi, phi_u1, latt)
-        implicite none
+        implicit none
         ! calculate energy of the effective Hamiltonian
         real(dp), intent(out) :: energy
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
         integer :: nt, nf, i, i1, i2, nn, ntau, j1, j2
@@ -243,7 +244,7 @@ contains
                         do ib = 1, 4
                             inf = latt%plaq_bondcord(1,ib,i_plaqA)
                             ilf = latt%plaq_bondcord(2,ib,i_plaqA)
-                            phi_Aplaq = phi_Aplaq + xfield(ilf,inf,nt)*sgnA_plaq(ib)
+                            phi_Aplaq = phi_Aplaq + xfield(ilf,inf,nt)*latt%sgnA_plaq(ib)
                         end do
 
                         ! B plaq
@@ -253,7 +254,7 @@ contains
                         do ib = 1, 4
                             inf = latt%plaq_bondcord(1,ib,i_plaqB)
                             ilf = latt%plaq_bondcord(2,ib,i_plaqB)
-                            phi_Bplaq = phi_Bplaq + xfield(ilf,inf,nt)*sgnB_plaq(ib)
+                            phi_Bplaq = phi_Bplaq + xfield(ilf,inf,nt)*latt%sgnB_plaq(ib)
                         end do
 #IFDEF COMPACT
                         ejpi = ejpi + cos(phi_Aplaq) + cos(phi_Bplaq)
@@ -311,14 +312,14 @@ contains
         ! calculate the inverse of M matrix which is the Green's function
         use fthmc_phy0
         use fthmc_tdm
-        implicite none
+        implicit none
 
         type(gfun), intent(inout) :: gfun0
         logical, intent(in) :: lmeasure_equaltime, lmeasure_dyn
         type(phy0), intent(inout) :: P0
         type(tdm), intent(inout) :: T0
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
 #IFDEF DIRINV
         ! DIRECT INVERSION
@@ -442,7 +443,7 @@ contains
             ! calculate the phifield
             call cpu_time(tstart)
             !call fthmc_matrix_calphi_gfun_sparse(phi)
-            call phi_u1%Md_mv_to_phi_gfun_sparse(latt)
+            call phi_u1%Md_mv_to_phi_gfun_sparse(phi, latt)
             call cpu_time(tend); time_vec(3) = time_vec(3) + (tend-tstart)
 
             ! do another conjugate residual method to compute the new x_vec with the new phifield
@@ -498,7 +499,7 @@ contains
         call cpu_time(tstart)
 
         ! equaltime
-        if (lmeasure_equaltime) call fthmc_phy0_meas(gfun0, P0, latt)
+        if (lmeasure_equaltime) call fthmc_phy0_meas(gfun0, P0, phi_u1, latt)
         ! dynamical
         if ( lmeasure_dyn ) then
             ! dealing with nt = ltrot, equaltime green's function
@@ -526,13 +527,13 @@ contains
         use fthmc_phy0
         use fthmc_tdm
 
-        implicite none
+        implicit none
         type(gfun), intent(inout) :: gfun0
         logical, intent(in) :: lmeasure_equaltime, lmeasure_dyn
         type(phy0), intent(inout) :: P0
         type(tdm), intent(inout) :: T0
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
         type(fthmc_phi) :: phi
@@ -561,20 +562,20 @@ contains
             ! set the one source correlation function
             do i = 1, ndim
                 j=1 ! vector, many rows and one column
-                imj = latt_imj(j,i)
+                imj = latt%latt_imj(j,i)
                 gfun0%grup_onesource(imj, nt) = phi%x_vec(i)
             enddo
 
             ! set up the whole equaltime Green's function making use of translational invariance
             do i = 1, ndim
                 do j = 1, ndim
-                    imj = latt_imj(j,i)
+                    imj = latt%latt_imj(j,i)
                     gfun0%grup(i,j,nt) = gfun0%grup_onesource(imj,nt)
                 enddo
             enddo
         enddo
         ! equaltime measurements
-        if (lmeasure_equaltime) call fthmc_phy0_meas(gfun0, P0, latt)
+        if (lmeasure_equaltime) call fthmc_phy0_meas(gfun0, P0, phi_u1, latt)
 
 
         ! dynamical measurements
@@ -586,7 +587,7 @@ contains
                 nt2 = npbc(nt1+nt, ltrot)
                 do i = 1, ndim
                     j = 1 ! nt=1, site index=1
-                    imj = latt_imj(j,i)
+                    imj = latt%latt_imj(j,i)
                     i1 = i + (nt2-1) * ndim
 
                     gfun0%g00up_onesource(imj,nt) = phi%x_vec(i)
@@ -598,7 +599,7 @@ contains
                 ! from one source to construct the whole dyn Green's function
                 do i = 1,ndim
                     do j = 1, ndim
-                        imj = latt_imj(j,i)
+                        imj = latt%latt_imj(j,i)
                         gfun0%g00up(i,j,nt) = gfun0%g00up_onesource(imj,nt)
                         gfun0%g0tup(i,j,nt) = gfun0%g0tup_onesource(imj,nt)
                         gfun0%gt0up(i,j,nt) = gfun0%gt0up_onesource(imj,nt)
@@ -622,10 +623,10 @@ contains
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! calculate the force to update the momentum field, ps: no dt multiply here
         ! input: xfield, rfield, phifield, M matrix  output: force matrix
@@ -639,7 +640,7 @@ contains
         integer :: s1, e1, s2, e2
         real(dp) :: force_bos, force_fer, force_newcode, phi_Aplaq_old, phi_Bplaq_old
         complex(dp) :: vec_tau1(ndim), vec_tau2(ndim)
-        real(dp), pointer :: xfield
+        real(dp), pointer :: xfield(:,:,:)
 
         ! important
         integer :: nt_in, nf_in, lf_in
@@ -685,18 +686,18 @@ contains
                         b_plaq = latt%inv_Aplaq_bondcord(2,i,nf)
                         do ib = 1, 4
                             if( ib .eq. b_plaq ) then
-                                phi_Aplaq_old = phi_Aplaq_old + xfield(i,nf,nt)*sgnA_plaq(ib)
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(i,nf,nt)*latt%sgnA_plaq(ib)
                             else
                                 inf = latt%plaq_bondcord(1,ib,i_plaq)
                                 ilf = latt%plaq_bondcord(2,ib,i_plaq)
-                                phi_Aplaq_old = phi_Aplaq_old + xfield(ilf,inf,nt)*sgnA_plaq(ib)
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(ilf,inf,nt)*latt%sgnA_plaq(ib)
                             end if
                         end do
                         ! Jpi part force, A plaq
 #IFDEF COMPACT
-                        force_bos = force_bos - dtau*jpi*sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
+                        force_bos = force_bos - dtau*jpi*latt%sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
 #ELSE
-                        force_bos = force_bos + dtau*jpi*sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
+                        force_bos = force_bos + dtau*jpi*latt%sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
 #ENDIF
 
                         ! B plaq
@@ -706,17 +707,17 @@ contains
 
                         do ib = 1, 4
                             if( ib .eq. b_plaq ) then
-                                phi_Bplaq_old = phi_Bplaq_old + xfield(i,nf,nt)*sgnB_plaq(ib)
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(i,nf,nt)*latt%sgnB_plaq(ib)
                             else
                                 inf = latt%plaq_bondcord(1,ib,i_plaq)
                                 ilf = latt%plaq_bondcord(2,ib,i_plaq)
-                                phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*sgnB_plaq(ib)
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*latt%sgnB_plaq(ib)
                             end if
                         end do
 #IFDEF COMPACT
-                        force_bos = force_bos - dtau*jpi*sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
+                        force_bos = force_bos - dtau*jpi*latt%sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
 #ELSE
-                        force_bos = force_bos + dtau*jpi*sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
+                        force_bos = force_bos + dtau*jpi*latt%sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
 #ENDIF
                     endif
 
@@ -746,10 +747,10 @@ contains
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! calculate the force to update the momentum field, ps: no dt multiply here
         ! input: xfield, rfield, phifield, M matrix  output: force matrix
@@ -801,10 +802,10 @@ contains
 #IFDEF _OPENMP
         use OMP_LIB
 #ENDIF
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! calculate the force to update the momentum field, ps: no dt multiply here
         ! input: xfield, rfield, phifield, M matrix  output: force matrix
@@ -818,7 +819,7 @@ contains
         integer :: s1, e1, s2, e2
         real(dp) :: force_bos, force_fer, force_newcode, phi_Aplaq_old, phi_Bplaq_old
         complex(dp) :: vec_tau1(ndim), vec_tau2(ndim)
-        real(dp), POINTER :: xfield
+        real(dp), POINTER :: xfield(:,:,:)
 
         ! important
         integer :: nt_in, nf_in, lf_in
@@ -851,18 +852,18 @@ contains
                         b_plaq = latt%inv_Aplaq_bondcord(2,i,nf)
                         do ib = 1, 4
                             if( ib .eq. b_plaq ) then
-                                phi_Aplaq_old = phi_Aplaq_old + xfield(i,nf,nt)*sgnA_plaq(ib)
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(i,nf,nt)*latt%sgnA_plaq(ib)
                             else
                                 inf = latt%plaq_bondcord(1,ib,i_plaq)
                                 ilf = latt%plaq_bondcord(2,ib,i_plaq)
-                                phi_Aplaq_old = phi_Aplaq_old + xfield(ilf,inf,nt)*sgnA_plaq(ib)
+                                phi_Aplaq_old = phi_Aplaq_old + xfield(ilf,inf,nt)*latt%sgnA_plaq(ib)
                             end if
                         end do
                         ! Jpi part force, A plaq
 #IFDEF COMPACT
-                        force_bos = force_bos - dtau*jpi*sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
+                        force_bos = force_bos - dtau*jpi*latt%sgnA_plaq(b_plaq)*dsin(phi_Aplaq_old)
 #ELSE
-                        force_bos = force_bos + dtau*jpi*sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
+                        force_bos = force_bos + dtau*jpi*latt%sgnA_plaq(b_plaq)*(phi_Aplaq_old-pi)
 #ENDIF
 
                         ! B plaq
@@ -872,17 +873,17 @@ contains
 
                         do ib = 1, 4
                             if( ib .eq. b_plaq ) then
-                                phi_Bplaq_old = phi_Bplaq_old + xfield(i,nf,nt)*sgnB_plaq(ib)
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(i,nf,nt)*latt%sgnB_plaq(ib)
                             else
                                 inf = latt%plaq_bondcord(1,ib,i_plaq)
                                 ilf = latt%plaq_bondcord(2,ib,i_plaq)
-                                phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*sgnB_plaq(ib)
+                                phi_Bplaq_old = phi_Bplaq_old + xfield(ilf,inf,nt)*latt%sgnB_plaq(ib)
                             end if
                         end do
 #IFDEF COMPACT
-                        force_bos = force_bos - dtau*jpi*sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
+                        force_bos = force_bos - dtau*jpi*latt%sgnB_plaq(b_plaq)*dsin(phi_Bplaq_old)
 #ELSE
-                        force_bos = force_bos + dtau*jpi*sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
+                        force_bos = force_bos + dtau*jpi*latt%sgnB_plaq(b_plaq)*(phi_Bplaq_old+pi)
 #ENDIF
                     endif
 
@@ -897,18 +898,21 @@ contains
 
 
     subroutine fthmc_core_md(phi, phi_u1, latt)
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
-        integer :: nf, i
+        integer :: nf, i, ncount
+        real(dp), pointer :: xfield(:,:,:)
         ! Fourier acceleration
         complex(dp), allocatable :: z_tmp(:), z_tmp_x(:), z_tmp_p(:)
 
+        xfield => phi_u1%gauge_u1
+
         ! move the momentum field to t + dt/2, prepare the first force
-        call fthmc_core_cal_force(phi, latt)
+        call fthmc_core_cal_force(phi, phi_u1, latt)
         ! fourier acceleration, fft of force matrix
         if ( lfourier ) then
             do nf = 1, nfam
@@ -924,7 +928,7 @@ contains
             allocate(z_tmp_p(ltrot))
         endif
 
-        do i = 1, mdstep
+        do ncount = 1, mdstep
             if ( lfourier ) then
                 !!! molecular dynamics with Fourier acceleration
                 ! update gauge field
@@ -948,7 +952,7 @@ contains
 
                 ! update the B matrix
                 !call fthmc_core_x2B
-                call phi_u1%vi_to_expvi()
+                call phi_u1%vi_to_expvi(latt)
                 ! calculate the inverse of MM matrix: (M^\dagger *M)^-1 phi = x_vec
                 call fthmc_core_cg(phi, phi_u1, latt)
                 ! calculate the force with the updated xfield and M matrix
@@ -1004,19 +1008,24 @@ contains
         if ( lfourier ) then
             deallocate(z_tmp, z_tmp_x, z_tmp_p)
         endif
+
+        NULLIFY(xfield)
     endsubroutine fthmc_core_md
 
 
     subroutine fthmc_core_md_splitting(phi, phi_u1, latt)
-        implicite none
+        implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt
+        class(ftdqmc_latt), intent(inout) :: latt
 
         ! local variables
-        integer :: nf, i
+        integer :: nf, i, ncount
+        real(dp), POINTER :: xfield(:,:,:)
         ! for test
         integer :: j
+
+        xfield => phi_u1%gauge_u1
 
         ! move the momentum field to t + dt/2, prepare the first force
         call fthmc_core_cal_force(phi, phi_u1, latt)
@@ -1029,7 +1038,7 @@ contains
 
             ! M inner leapfrog dynamics with effective stepsize \epsilon /M
             ! boson force is 10 times larger that fermion force for J=1.0, K=0.0
-            do i =1, splitting_M
+            do ncount =1, splitting_M
                 call cpu_time(tstart)
                 pfield(:,:,:) = pfield(:,:,:) - (dt/dble(splitting_M))/2.d0*hybrid_force2(:,:,:)
                 xfield(:,:,:) = xfield(:,:,:) + (dt/dble(splitting_M))*pm*pfield(:,:,:)
@@ -1073,8 +1082,9 @@ contains
             !    write(222, '(e16.8)') hybrid_force1(j,1,1)
             !enddo
         enddo
-    endsubroutine fthmc_core_md_splitting
 
+        NULLIFY(xfield)
+    endsubroutine fthmc_core_md_splitting
 
 
     subroutine fthmc_sweep_hybrid(lupdate, lmeasure_equaltime, lmeasure_dyn, P0, T0, gfun0, phi, phi_u1, latt0)
@@ -1085,7 +1095,7 @@ contains
         type(gfun),  intent(inout) :: gfun0
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt_sq), intent(inout) :: latt0
+        class(ftdqmc_latt), intent(inout) :: latt0
 
         ! local variables
         integer :: nt, i, nf
@@ -1093,7 +1103,7 @@ contains
 
         if ( lupdate ) then
             ! initial momentum field and R field drawn from Gaussian distribution, also prepare the x_vec
-            call fthmc_core_initfield(phi)
+            call fthmc_core_initfield(phi, phi_u1, latt0)
 
             ! calculate the energy before the MD
             call fthmc_core_cal_ener(ener_old, phi, phi_u1, latt0)

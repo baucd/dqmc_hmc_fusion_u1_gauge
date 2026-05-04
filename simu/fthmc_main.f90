@@ -29,6 +29,7 @@ program fthmc_main
     real(dp) :: start_time, end_time, time0, time1, time2, ratio
     real(dp) :: ener_pot_old_local, ener_pot_new_local
     character (len = 20) :: date_time_string
+    character (len = 40) :: filename
 
     ! timing
     real(dp) :: tstart_main, tend_main
@@ -55,7 +56,6 @@ program fthmc_main
     main_obs(:) = czero
     ! time profiling
     time_vec(:) = zero
-
     ! set latt_type and norb
     latt0%latt_type = idx_sq; norb = 1
 
@@ -77,10 +77,13 @@ program fthmc_main
     ! pseudo fermion and u1 gauge field
     allocate(phi(int(Nflavor/2.d0)))
     do icount = 1, int(Nflavor/2.d0)
-        call phi(icount)%ftdqmc_phi_alloc()
+        call phi(icount)%fthmc_phi_alloc()
     enddo
     call phi_u1%ftdqmc_auxfield_alloc()
-    call phi_u1%ftdqmc_auxfield_inconfc()
+    filename = 'confin'
+    call phi_u1%ftdqmc_auxfield_inconfc(filename)
+    ! set zep*
+    call phi_u1%vi_to_expvi(latt0)
 
     ! hybrid algorithm related
     !call fthmc_hybrid_alloc
@@ -269,7 +272,8 @@ program fthmc_main
         ! if not equi, stop the program.
         if ( .not. lequi ) then
             ! output configurations if not equi
-            call phi_u1%ftdqmc_auxfield_outconfc()
+            filename = 'confout'
+            call phi_u1%ftdqmc_auxfield_outconfc(filename)
             stop
         endif
 #endif
@@ -292,7 +296,7 @@ program fthmc_main
         if (ltau) call fthmc_tdm_init(T0)
 
         do nsw = 1, nsweep
-            call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.true., lmeasure_dyn=ltau, P0=P0, T0=T0, gfun0=gfun0, phi=phi, latt0=latt0)
+            call fthmc_sweep_hybrid(lupdate=.true., lmeasure_equaltime=.true., lmeasure_dyn=ltau, P0=P0, T0=T0, gfun0=gfun0, phi=phi, phi_u1=phi_u1, latt0=latt0)
         end do
 
         ! avg, ft and output configurations
@@ -301,7 +305,8 @@ program fthmc_main
         if(ltau) call fthmc_tdm_corFT(T0, latt0) ! sq(tau)
 
         ! output configurations
-        call phi_u1%ftdqmc_auxfield_outconfc()
+        filename = 'confout'
+        call phi_u1%ftdqmc_auxfield_outconfc(filename)
 
         ! --- Timming
         if( nbc .eq. 1 )  then
@@ -340,12 +345,12 @@ program fthmc_main
     call latt0%ftdqmc_latt_free()
     call phi_u1%ftdqmc_auxfield_free()
     do icount = 1, int(Nflavor/2.d0)
-        call phi(icount)%ftdqmc_phi_free()
+        call phi(icount)%fthmc_phi_free()
     enddo
     if ( ltau ) call fthmc_tdm_free(T0)
     call fthmc_phy0_free(P0)
     call fthmc_gfun_free(gfun0)
-    call ftdqmc_hamilt_free
+    call fthmc_hamilt_free
 
 #ifdef CUDA_CG
     call fthmc_gpu_conjgate_free()

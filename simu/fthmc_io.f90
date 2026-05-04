@@ -1,4 +1,4 @@
-module ftdqmc_io
+module fthmc_io
       use ftdqmc_hamilt
 
 contains
@@ -88,8 +88,8 @@ contains
                 call p_get( 'nsamples' , nsamples)
                 call p_get( 'itermax'  , itermax )
                 call p_get( 'errate'   , errate  )
-                call p_get( 'ltunedt'  , ltunedt    )
-                call p_get( 'lfourier' , lfourier
+                call p_get( 'ltunedt'  , ltunedt )
+                call p_get( 'lfourier' , lfourier)
                 call p_get( 'luseinputdt'  , luseinputdt    )
                 call p_destroy()
             end if
@@ -173,6 +173,12 @@ contains
             Ivec(i) = 1.d0
         end do
 
+        if( lstglobal ) then
+            allocate( tentacle(2,lq*ltrot), tentacle_old(2,lq*ltrot) )
+            allocate( stcluster(lq,ltrot) )
+            allocate( stbonds_neib(2,6,lq,ltrot) )
+        end if
+
         ! u1 model expvi
         allocate( zep_rsigl_k(lfam, nfam, ltrot) )
         allocate( zem_rsigl_k(lfam, nfam, ltrot) )
@@ -238,7 +244,7 @@ contains
     subroutine fthmc_initial_head
         use spring
         use ftdqmc_hamilt
-        use fthmc_hamilt
+        use ftdqmc_hamilt
 #ifdef _OPENMP
             use omp_lib
 #endif
@@ -327,7 +333,6 @@ contains
             write(fout,'(a,f6.2)')    ' init_xmag    = ', init_xmag
             write(fout,'(a,f7.3)')    ' mu     = ', mu
             write(fout,'(a,f6.2)')    ' B      = ', xmag
-            write(fout,'(a,f6.2)')    ' dimer  = ', dimer
             write(fout,'(a,f8.5)')    ' flux_x = ', flux_x
             write(fout,'(a,f8.5)')    ' flux_y = ', flux_y
             write(fout,'(a,i4)')      ' L      = ', l
@@ -371,4 +376,4 @@ contains
 
     end subroutine fthmc_initial_print
 
-end module ftdqmc_io
+end module fthmc_io
