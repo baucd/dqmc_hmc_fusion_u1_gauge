@@ -54,6 +54,7 @@ contains
         ltunedt = .false.
         luseinputdt = .false.
         lfourier = .false.
+        lfixseed = .false.
 
         ! read parameters from ftdqmc.in input file
         if ( irank.eq.0 ) then
@@ -91,6 +92,7 @@ contains
                 call p_get( 'ltunedt'  , ltunedt )
                 call p_get( 'lfourier' , lfourier)
                 call p_get( 'luseinputdt'  , luseinputdt    )
+                call p_get( 'lfixseed'  , lfixseed    )
                 call p_destroy()
             end if
         end if
@@ -123,6 +125,7 @@ contains
         call mp_bcast( ltunedt, 0 )
         call mp_bcast( lfourier, 0 )
         call mp_bcast( luseinputdt, 0 )
+        call mp_bcast( lfixseed, 0 )
         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
         ! tune parameters
@@ -354,6 +357,7 @@ contains
             write(fout,*)  'ltunedt = ', ltunedt
             write(fout,*)  'lfourier = ', lfourier
             write(fout,*)  'luseinputdt = ', luseinputdt
+            write(fout,*)  'lfixseed = ', lfixseed
             write(fout,*)
 
             ! output the momentum vector list

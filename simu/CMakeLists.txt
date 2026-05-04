@@ -8,7 +8,7 @@ if(ENABLE_HMC)
 endif()
 
 if(ENABLE_PIFLUX)
-    add_compile_options(-DPIFLUX)
+    add_compile_options(-DINI_PIFLUX)
 endif()
 if(ENABLE_DYNERR)
     add_compile_options(-DDYNERROR)

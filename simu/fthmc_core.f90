@@ -1131,8 +1131,12 @@ contains
             else
                 ratio = dexp ( -ratio )
             endif
+
+            ! accept/reject
             random = spring_sfmt_stream()
             if ( ratio .gt. random) then
+            !if ( .true. ) then
+            !if ( .false. ) then
                 main_obs(1) = main_obs(1) + dcmplx( 1.d0, 1.0d0)
             else
                 main_obs(1) = main_obs(1) + dcmplx( 0.d0, 1.0d0)

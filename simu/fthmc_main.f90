@@ -46,7 +46,7 @@ program fthmc_main
 #ENDIF
 
     if( irank.eq.0 ) then
-        open( unit=fout, file='ftdqmc.out', status='unknown' )
+        open( unit=fout, file='fthmc.out', status='unknown' )
         open( unit=fout2, file='cg.log', status='unknown' )
         open( unit=fout3, file='ener.log', status='unknown' )
         open( unit=fout4, file='force.log', status='unknown' )
@@ -58,6 +58,8 @@ program fthmc_main
     time_vec(:) = zero
     ! set latt_type and norb
     latt0%latt_type = idx_sq; norb = 1
+    ! set field_index
+    phi_u1%field_index = idx_gauge_u1
 
     ! hamilt init
     call fthmc_hamilt_init
@@ -69,10 +71,10 @@ program fthmc_main
     call latt0%ftdqmc_latt_sli()
     call latt0%ftdqmc_latt_sq_sltpf()
 
-    !! print head
-    !call fthmc_initial_head
-    !! print hamilt and lattice info
-    !call fthmc_initial_print
+    ! print header
+    call fthmc_initial_head
+    ! print hamilt and lattice info
+    call fthmc_initial_print(latt0)
 
     ! pseudo fermion and u1 gauge field
     allocate(phi(int(Nflavor/2.d0)))
@@ -84,11 +86,6 @@ program fthmc_main
     call phi_u1%ftdqmc_auxfield_inconfc(filename)
     ! set zep*
     call phi_u1%vi_to_expvi(latt0)
-
-    ! hybrid algorithm related
-    !call fthmc_hybrid_alloc
-    ! matrix operation
-    !call fthmc_matrix_alloc
 
     ! gfun and observables: P0 and T0
     call fthmc_gfun_alloc(gfun0)
@@ -103,11 +100,6 @@ program fthmc_main
     call fthmc_gpu_phy0_init(ndim, ltrot, reshape(list, (/ndim*2/)), reshape(nnlist,(/ndim*9/)), reshape(inv_latt_imj,(/ndim*ndim*2/)), z1, z2, z3, z4)
 #endif
 #endif
-
-    ! print header
-    call fthmc_initial_head
-    ! print hamilt and lattice info
-    call fthmc_initial_print(latt0)
 
     ! decide whether do warmup
     if ( ltunedt .and. .not. luseinputdt) then
@@ -316,7 +308,6 @@ program fthmc_main
             call cpu_time(time2)
 #ENDIF
             if(irank.eq.0) then
-				if (nbc .eq. 1) write(fout,'(a)') ' proceed to production runs.'
                 write(fout,'(a,f8.3,a)') ' time for 1 bin: ', (time2-time1)/dble(60), ' m'
             end if
         end if
