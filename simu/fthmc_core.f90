@@ -52,9 +52,7 @@ contains
 
 
     subroutine fthmc_core_cg(phi, phi_u1, latt)
-!#IFNDEF CUDA
         use fthmc_conjugate
-!#ENDIF
         implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
@@ -82,8 +80,6 @@ contains
 
             ! double precision cg
 #ifdef CUDA_CG
-            ! CUDA C ver
-            !call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
             ! CUDA Fortran ver
             call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
 #else
@@ -98,9 +94,7 @@ contains
 
 
     subroutine fthmc_core_cg_gfun(phi, phi_u1, latt)
-!#IFNDEF CUDA
         use fthmc_conjugate
-!#ENDIF
         implicit none
         class(fthmc_phi), intent(inout) :: phi
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
@@ -117,8 +111,6 @@ contains
         phi%x_vec = cone
         ! double precision cg
 #ifdef CUDA_CG
-        ! CUDA C ver
-        !call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
         ! CUDA Fortran ver
         call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
 #else
