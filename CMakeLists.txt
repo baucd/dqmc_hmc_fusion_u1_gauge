@@ -18,12 +18,17 @@ endif()
 
 # set debug option and compiler options for linux machine
 option(ENABLE_DEBUG "Enable Debug" OFF)
+option(ENABLE_GPROF "Enable Profiling" OFF)
 if(ENABLE_DEBUG)
     set(CMAKE_BUILD_TYPE debug)
     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fpp -warn all -check bounds -check pointers -check format -traceback -g -diag-disable=5462")
 else()
     set(CMAKE_BUILD_TYPE release)
-    set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${arch_opt_flags} -fpp -align all -diag-disable=5462")
+    if (ENABLE_GPROF)
+        set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${arch_opt_flags} -fpp -align all -diag-disable=5462 -pg")
+    else()
+        set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${arch_opt_flags} -fpp -align all -diag-disable=5462")
+    endif()
 endif()
 
 # set debug option and compiler options for mac
