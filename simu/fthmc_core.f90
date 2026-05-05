@@ -48,16 +48,13 @@ contains
         call cpu_time(tstart)
         call fthmc_core_cg(phi, phi_u1, latt)
         call cpu_time(tend); time_vec(1) = time_vec(1) + (tend-tstart)
-
-        ! for test: cg gpu
-        !call fthmc_core_cg_test(phi)
     endsubroutine fthmc_core_initfield
 
 
     subroutine fthmc_core_cg(phi, phi_u1, latt)
-#IFNDEF CUDA
+!#IFNDEF CUDA
         use fthmc_conjugate
-#ENDIF
+!#ENDIF
         implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
@@ -72,23 +69,26 @@ contains
         complex(dp) :: x_vec_tmp(ndim*ltrot)
 
         do i = 1, int(Nflavor/2.d0)
-#IFDEF CGOPT
+#ifdef CGOPT
             ! setting the x_0 according to this extrapolation formula from Richard's paper
             x_vec_tmp = phi(i)%x_vec
             phi(i)%x_vec = dcmplx(2.d0, 0.d0) * phi(i)%x_vec - phi(i)%x_vec_old
             ! store the old solution to x_vec_old
             phi(i)%x_vec_old = x_vec_tmp
-#ELSE
+#else
             ! setting the x_0 to be cone
             phi(i)%x_vec = cone
-#ENDIF
+#endif
 
             ! double precision cg
-#IFDEF CUDA
-            call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
-#ELSE
+#ifdef CUDA_CG
+            ! CUDA C ver
+            !call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+            ! CUDA Fortran ver
+            call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+#else
             call fthmc_conjugate_cg(itermax, errate, phi(i)%phifield, phi(i)%x_vec, phi_u1, iter, error, latt) ! sparse version
-#ENDIF
+#endif
             if ( irank .eq. 0) then
                 write(fout2, *) iter, error
             endif
@@ -97,86 +97,10 @@ contains
     endsubroutine fthmc_core_cg
 
 
-    subroutine fthmc_core_cg_test(phi, phi_u1, latt)
-#IFNDEF CUDA
-        use fthmc_conjugate
-#ENDIF
-        implicit none
-        class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
-        class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
-        class(ftdqmc_latt), intent(inout) :: latt
-
-        ! conjugate gradient to calculate M^T * M for force as well as the Green's function
-        ! input: MM output: (M^T*M)^-1 phi = x_vec, x_vec is enough
-
-        ! local
-        integer  :: iter, i, j
-        real(dp) :: error
-        complex(dp) :: x_vec_tmp(ndim*ltrot)
-
-        ! for test
-        INTEGER, PARAMETER :: ntest=10
-        COMPLEX(dp) :: x_vec_test(ndim*ltrot, ntest)
-        real(dp) :: rtmp
-
-        ! first use cgopt
-!        do i = 1, int(Nflavor/2.d0)
-!            ! setting the x_0 according to this extrapolation formula from Richard's paper
-!            x_vec_tmp = phi(i)%x_vec
-!            phi(i)%x_vec = dcmplx(2.d0, 0.d0) * phi(i)%x_vec - phi(i)%x_vec_old
-!            ! store the old solution to x_vec_old
-!            phi(i)%x_vec_old = x_vec_tmp
-!
-!            ! introduce some randomness, 10%
-!            !do j = 1, ndim*ltrot
-!            !    phi(i)%x_vec(j) = phi(i)%x_vec(j) + 0.3d0 * (spring_sfmt_stream() - 0.5d0) * 2.d0 * phi(i)%x_vec(j)
-!            !enddo
-!
-!            ! double precision cg
-!#IFDEF CUDA
-!            call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
-!#ELSE
-!            call fthmc_conjugate_cg(itermax, errate, phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
-!#ENDIF
-!            ! outptu x_vec
-!            do j = 1, ndim*ltrot
-!                write(111, '(2e16.8)') phi(i)%x_vec(j)
-!            enddo
-!
-!            if ( irank .eq. 0) then
-!                write(fout2, *) iter, error
-!            endif
-!        enddo
-
-        ! second use cone init
-        do i = 1, int(Nflavor/2.d0)
-            ! setting the x_0 to be cone
-            phi(i)%x_vec = cone
-
-            ! double precision cg
-#IFDEF CUDA
-            call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
-#ELSE
-            call fthmc_conjugate_cg(itermax, errate, phi(i)%phifield, phi(i)%x_vec, phi_u1, iter, error, latt) ! sparse version
-#ENDIF
-
-            ! outptu x_vec
-            do j = 1, ndim*ltrot
-                write(111, '(2e16.8)') phi(i)%x_vec(j)
-            enddo
-            if ( irank .eq. 0) then
-                write(fout2, *) iter, error
-            endif
-        enddo
-
-        stop
-    endsubroutine fthmc_core_cg_test
-
-
     subroutine fthmc_core_cg_gfun(phi, phi_u1, latt)
-#IFNDEF CUDA
+!#IFNDEF CUDA
         use fthmc_conjugate
-#ENDIF
+!#ENDIF
         implicit none
         class(fthmc_phi), intent(inout) :: phi
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
@@ -192,11 +116,14 @@ contains
 
         phi%x_vec = cone
         ! double precision cg
-#IFDEF CUDA
-        call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
-#ELSE
+#ifdef CUDA_CG
+        ! CUDA C ver
+        !call fthmc_gpu_conjugate_cg(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
+        ! CUDA Fortran ver
+        call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
+#else
         call fthmc_conjugate_cg(itermax, errate, phi%phifield, phi%x_vec, phi_u1, iter, error, latt) ! sparse version
-#ENDIF
+#endif
 
         if ( irank .eq. 0) then
             write(fout2, *) iter, error
@@ -1152,8 +1079,9 @@ contains
 
             ! accept/reject
             random = spring_sfmt_stream()
-            if ( ratio .gt. random) then
-            !if ( random .gt. 0.5d0) then
+            !if ( ratio .gt. random) then
+            ! for test
+            if ( random .gt. 0.5d0) then
             !if ( .true. ) then
             !if ( .false. ) then
                 main_obs(1) = main_obs(1) + dcmplx( 1.d0, 1.0d0)

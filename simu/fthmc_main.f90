@@ -92,13 +92,13 @@ program fthmc_main
     call fthmc_phy0_alloc(P0)
     if ( ltau) call fthmc_tdm_alloc(T0)
 
-#ifdef CUDA_CG
-    ! use default gpu card 0
+    ! cuda init: use default gpu card 0
     dev = 0
+#ifdef CUDA_CG
     call fthmc_gpu_conjgate_init(ndim, ltrot, nfam, lfam, reshape(l_bonds, (/2*lfam*nfam/)), itermax, errate, coshrtdtau, sinhrtdtau, csqrt2, mu_complex, dev)
+#endif
 #ifdef CUDA_MEAS
     call fthmc_gpu_phy0_init(ndim, ltrot, reshape(list, (/ndim*2/)), reshape(nnlist,(/ndim*9/)), reshape(inv_latt_imj,(/ndim*ndim*2/)), z1, z2, z3, z4)
-#endif
 #endif
 
     ! decide whether do warmup
@@ -345,9 +345,9 @@ program fthmc_main
 
 #ifdef CUDA_CG
     call fthmc_gpu_conjgate_free()
+#endif
 #ifdef CUDA_MEAS
     call fthmc_gpu_phy0_free()
-#endif
 #endif
 
     if( irank.eq.0 ) then

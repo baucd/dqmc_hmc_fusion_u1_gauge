@@ -139,7 +139,7 @@ contains
         pm = pm * dtau
         inputdt = dt
 
-#ifdef CUDA
+#ifdef CUDA_CG
         ! set mu for gpu, directly use this value, as constant
         mu_complex = dcmplx(exp(-dtau*(-mu/2.d0)), 0.d0)
 #endif
