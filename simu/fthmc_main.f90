@@ -9,6 +9,9 @@ program fthmc_main
     use fthmc_phi_class
     use ftdqmc_auxfield_class
     use ftdqmc_auxfield_f5_class
+#ifdef CUDA_CG
+    use fthmc_conjugate_cuda
+#endif
     use fthmc_core
     use fthmc_gfun
     use fthmc_phy0
@@ -65,8 +68,6 @@ program fthmc_main
     call fthmc_hamilt_init
 
     ! latt, need update with latt0
-    !call fthmc_latt_alloc
-    !call fthmc_latt_sli
     call latt0%ftdqmc_latt_alloc()
     call latt0%ftdqmc_latt_sli()
     call latt0%ftdqmc_latt_sq_sltpf()
@@ -95,10 +96,10 @@ program fthmc_main
     ! cuda init: use default gpu card 0
     dev = 0
 #ifdef CUDA_CG
-    call fthmc_conjgate_init_cuda(reshape(l_bonds, (/2*lfam*nfam/)), dev)
+    call fthmc_conjugate_init_cuda(reshape(latt0%l_bonds, (/2*lfam*nfam/)), dev)
 #endif
 #ifdef CUDA_MEAS
-    call fthmc_phy0_init_cuda(ndim, ltrot, reshape(list, (/ndim*2/)), reshape(nnlist,(/ndim*9/)), reshape(inv_latt_imj,(/ndim*ndim*2/)), z1, z2, z3, z4)
+    call fthmc_phy0_init_cuda(ndim, ltrot, reshape(latt0%list, (/ndim*2/)), reshape(latt0%nnlist,(/ndim*9/)), reshape(latt0%inv_latt_imj,(/ndim*ndim*2/)), z1, z2, z3, z4)
 #endif
 
     ! decide whether do warmup
@@ -344,7 +345,7 @@ program fthmc_main
     call fthmc_hamilt_free
 
 #ifdef CUDA_CG
-    call fthmc_conjgate_free_cuda()
+    call fthmc_conjugate_free_cuda()
 #endif
 #ifdef CUDA_MEAS
     call fthmc_phy0_free_cuda()

@@ -13,6 +13,15 @@ contains
         real(dp) :: r1, r2, eta
         logical :: exists
 
+        ! set constants
+        cone = dcmplx( 1.d0, 0.d0 )
+        ci = dcmplx( 0.d0, 1.d0 )
+        czero = dcmplx( 0.d0, 0.d0 )
+        chalf = dcmplx( 0.5d0, 0.d0 )
+        cquarter = dcmplx( 0.25d0, 0.d0 )
+        cinvsqrt2 = dcmplx( dsqrt(0.5d0), 0.d0 )
+        csqrt2 = dcmplx( dsqrt(2.0d0), 0.d0 )
+
         ! default parameters
         l    = 2
         beta = 20

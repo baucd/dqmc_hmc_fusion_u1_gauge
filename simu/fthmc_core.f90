@@ -52,7 +52,12 @@ contains
 
 
     subroutine fthmc_core_cg(phi, phi_u1, latt)
-        use fthmc_conjugate
+#ifdef CUDA_CG
+    use fthmc_conjugate_cuda
+#else
+    use fthmc_conjugate
+#endif
+
         implicit none
         class(fthmc_phi), intent(inout) :: phi(int(Nflavor/2.d0))
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
@@ -94,7 +99,11 @@ contains
 
 
     subroutine fthmc_core_cg_gfun(phi, phi_u1, latt)
-        use fthmc_conjugate
+#ifdef CUDA_CG
+    use fthmc_conjugate_cuda
+#else
+    use fthmc_conjugate
+#endif
         implicit none
         class(fthmc_phi), intent(inout) :: phi
         class(ftdqmc_auxfield_f5), intent(inout) :: phi_u1
