@@ -46,7 +46,6 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
         set(CMAKE_Fortran_FLAGS "-cpp -ffree-line-length-none -fallow-argument-mismatch -ffpe-summary=none")
     endif()
 endif()
-
 # set OpenMP Option
 option(ENABLE_OPENMP "Enable OpenMP" OFF)
 if(ENABLE_OPENMP)
@@ -60,6 +59,12 @@ if(ENABLE_OPENMP)
         message(STATUS "openmp release flags: " ${CMAKE_Fortran_FLAGS})
     endif()
 endif()
+# set cuda option
+if(ENABLE_CUDACG)
+    set(CUDA_FLAGS " ")
+    set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${CUDA_FLAGS}")
+    message(STATUS "cuda flags: " ${CUDA_FLAGS})
+endif()
 
 # output system type and build type
 message(STATUS "System: " ${CMAKE_SYSTEM_NAME})
@@ -69,4 +74,6 @@ message(STATUS "compile flags: " ${CMAKE_Fortran_FLAGS})
 # set project, executable and libs
 add_subdirectory(fqmc)
 add_subdirectory(simu)
-add_subdirectory(anal)
+if (NOT ENABLE_CUDACG)
+    add_subdirectory(anal)
+endif()

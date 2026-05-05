@@ -350,10 +350,12 @@ contains
 
         ! STOCHASTIC ESTIMATOR
         gfun0%grup(:,:,:) = czero
-        gfun0%g00up(:,:,:)= czero
-        gfun0%g0tup(:,:,:)= czero
-        gfun0%gt0up(:,:,:)= czero
-        gfun0%gttup(:,:,:)= czero
+        if ( lmeasure_dyn ) then
+            gfun0%g00up(:,:,:)= czero
+            gfun0%g0tup(:,:,:)= czero
+            gfun0%gt0up(:,:,:)= czero
+            gfun0%gttup(:,:,:)= czero
+        endif
         do ncount = 1, nsamples
 
             ! assign a new rfield

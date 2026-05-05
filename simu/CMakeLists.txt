@@ -6,7 +6,7 @@ if(ENABLE_HMC)
     add_compile_options(-DHMC)
     add_compile_options(-DCGOPT)
 endif()
-
+# simulation flags
 if(ENABLE_PIFLUX)
     add_compile_options(-DINI_PIFLUX)
 endif()
@@ -16,8 +16,15 @@ endif()
 if(ENABLE_COMPACT)
     add_compile_options(-DCOMPACT)
 endif()
+# cuda flags
 if(ENABLE_CUDACG)
     add_compile_options(-DCUDA_CG)
+    set(EXE_NAME "exe_gpu")
+else()
+    set(EXE_NAME "exe")
+endif()
+if(ENABLE_CUDAMEAS)
+    add_compile_options(-DCUDA_MEAS)
 endif()
 
 file(GLOB_RECURSE DIR_SIMU *.f90)
@@ -26,8 +33,8 @@ include_directories("${PROJECT_BINARY_DIR}/fqmc/fqmc_modl")
 include_directories("${PROJECT_BINARY_DIR}/fqmc/fqmc_algo")
 add_library(simu STATIC ${DIR_SIMU})
 
-# set exe
-add_executable(exe fthmc_main.f90)
+# set exe name
+add_executable(${EXE_NAME} fthmc_main.f90)
 
 # set MKL or other blas/lapack libraries
 find_library(mkl_found libmkl_core.a $ENV{MKLROOT}/lib/intel64)
@@ -55,19 +62,31 @@ else()
         set(mkl_libs openblas)
     endif()
 endif()
-
-# maybe not necessary, set -ldl
+# openmp lib, maybe not necessary, set -ldl
 if(ENABLE_OPENMP)
     set(omp_lib "dl")
 endif()
+# cuda libs
+if(ENABLE_CUDACG)
+    # set CUDA libraries
+    add_library(cublas SHARED IMPORTED)
+    add_library(cudart SHARED IMPORTED)
+    set_property(TARGET cublas PROPERTY IMPORTED_LOCATION $ENV{CUDA_MATH_LIB}/libcublas.so)
+    set_property(TARGET cudart PROPERTY IMPORTED_LOCATION $ENV{CUDALIB}/libcudart.so)
+    set(cuda_libs cublas cudart)
+endif()
+
 # set linked library base on different platforms
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-    target_link_libraries(exe simu fqmc_algo fqmc_modl fqmc_math -Wl,--start-group ${mkl_libs} -Wl,--end-group -lpthread -lm ${omp_lib})
+    if (ENABLE_CUDACG)
+        target_link_libraries(${EXE_NAME} simu fqmc_algo fqmc_modl fqmc_math ${cuda_libs} -Wl,--start-group ${mkl_libs} -Wl,--end-group -lpthread -lm ${omp_lib})
+    else()
+        target_link_libraries(${EXE_NAME} simu fqmc_algo fqmc_modl fqmc_math -Wl,--start-group ${mkl_libs} -Wl,--end-group -lpthread -lm ${omp_lib})
+    endif()
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-    target_link_libraries(exe simu fqmc_algo fqmc_modl fqmc_math ${mkl_libs} -lpthread -lm ${omp_lib})
+    target_link_libraries(${EXE_NAME} simu fqmc_algo fqmc_modl fqmc_math ${mkl_libs} -lpthread -lm ${omp_lib})
 else()
     message(FATAL_ERROR "Unknown platform!")
 endif()
-
 # install to bin/
-install(TARGETS exe DESTINATION ${PROJECT_SOURCE_DIR}/bin)
+install(TARGETS ${EXE_NAME} DESTINATION ${PROJECT_SOURCE_DIR}/bin)
