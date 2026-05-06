@@ -11,6 +11,7 @@ program fthmc_main
     use ftdqmc_auxfield_f5_class
 #ifdef CUDA_CG
     use fthmc_conjugate_cuda
+    use, intrinsic :: ieee_exceptions
 #endif
     use fthmc_core
     use fthmc_gfun
@@ -387,6 +388,11 @@ program fthmc_main
 
     call MPI_BARRIER(MPI_COMM_WORLD,ierr)
     call MPI_FINALIZE(ierr)
+#ifdef CUDA_CG
+    call ieee_set_flag(ieee_all, .false.)
+#else
     stop
+#endif
+
 
 end program fthmc_main
