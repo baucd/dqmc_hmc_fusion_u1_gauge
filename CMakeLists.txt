@@ -22,7 +22,9 @@ option(ENABLE_GPROF "Enable Profiling" OFF)
 if(ENABLE_DEBUG)
     set(CMAKE_BUILD_TYPE debug)
     if (ENABLE_CUDACG)
-        set(CMAKE_Fortran_FLAGS "-cpp")
+        #set(CMAKE_Fortran_FLAGS "-cpp")
+        set(CMAKE_Fortran_FLAGS "-cpp -g -traceback -Ktrap=fp -Mbounds -Mchkptr -Mnovect ")
+
         # for nvprof
         #add_compile_options(-lineinfo)
     else()
@@ -32,6 +34,7 @@ else()
     set(CMAKE_BUILD_TYPE release)
     if (ENABLE_CUDACG)
         set(CMAKE_Fortran_FLAGS "-cpp ")
+
         # for nvprof
         #add_compile_options(-lineinfo)
     else()
