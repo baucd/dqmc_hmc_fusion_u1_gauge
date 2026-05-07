@@ -98,6 +98,7 @@ program fthmc_main
     dev = 0
 #ifdef CUDA_CG
     call fthmc_conjugate_init_cuda(reshape(latt0%l_bonds, (/2*lfam*nfam/)), dev)
+    call fthmc_conjugate_capture_graph_cuda
 #endif
 #ifdef CUDA_MEAS
     call fthmc_phy0_init_cuda(ndim, ltrot, reshape(latt0%list, (/ndim*2/)), reshape(latt0%nnlist,(/ndim*9/)), reshape(latt0%inv_latt_imj,(/ndim*ndim*2/)), z1, z2, z3, z4)

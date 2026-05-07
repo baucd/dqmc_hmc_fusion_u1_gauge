@@ -86,7 +86,8 @@ contains
             ! double precision cg
 #ifdef CUDA_CG
             ! CUDA Fortran ver
-            call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+            !call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
+            call fthmc_conjugate_cg_cuda_graph(reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi(i)%phifield, phi(i)%x_vec, iter, error) ! sparse version
 #else
             call fthmc_conjugate_cg(itermax, errate, phi(i)%phifield, phi(i)%x_vec, phi_u1, iter, error, latt) ! sparse version
 #endif
@@ -121,7 +122,8 @@ contains
         ! double precision cg
 #ifdef CUDA_CG
         ! CUDA Fortran ver
-        call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
+        !call fthmc_conjugate_cg_cuda(ndim*ltrot, lfam*nfam*ltrot, reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
+        call fthmc_conjugate_cg_cuda_graph(reshape(zep_rsigl_k, (/lfam*nfam*ltrot/)), reshape(zem_rsigl_k, (/lfam*nfam*ltrot/)), phi%phifield, phi%x_vec, iter, error) ! sparse version
 #else
         call fthmc_conjugate_cg(itermax, errate, phi%phifield, phi%x_vec, phi_u1, iter, error, latt) ! sparse version
 #endif
